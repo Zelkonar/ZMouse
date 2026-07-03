@@ -1,0 +1,17 @@
+[[device]]
+registry_id = 4295289702
+name = "ROG CHAKRAM CORE"
+
+[[device.mapping]]
+button = 3
+
+[device.mapping.action]
+type = "button"
+button = 3
+
+[[device.mapping]]
+button = 4
+
+[device.mapping.action]
+type = "button"
+button = 4

@@ -1,6 +1,6 @@
 //! TOML configuration: per-device button mappings keyed by `registry_id`.
 //!
-//! Example (default path on macOS: `~/Library/Application Support/remouse/config.toml`):
+//! Example (default path on macOS: `~/Library/Application Support/zmouse/config.toml`):
 //!
 //! ```toml
 //! [[device]]
@@ -88,6 +88,11 @@ impl Default for ScrollConfig {
         }
     }
 }
+
+/// The left mouse button (CGEvent button 0). It's the user's primary, recovery-critical input, so
+/// ZMouse refuses to remap it — losing left-click on your only pointer would lock you out. The
+/// editor won't assign it and `resolve` drops any hand-edited button-0 mapping.
+pub const PROTECTED_BUTTON: i64 = 0;
 
 /// High bit marks a vendor/product composite key so it can never collide with a kernel registry
 /// entry id (those are plane-encoded and realistically well under 2^40).
@@ -241,6 +246,11 @@ impl Config {
         for dev in &self.device {
             for key in dev.device_keys() {
                 for m in &dev.mapping {
+                    // The left (primary) button is protected: never remap it, even if a config
+                    // hand-edit tries to. It's your recovery input — see PROTECTED_BUTTON.
+                    if m.button == PROTECTED_BUTTON {
+                        continue;
+                    }
                     map.insert((key, m.button), m.action.clone());
                 }
             }
@@ -285,6 +295,12 @@ impl Config {
                 }
             }
             for m in &dev.mapping {
+                if m.button == PROTECTED_BUTTON {
+                    problems.push(format!(
+                        "device {} button {}: the left (primary) button is protected and won't be remapped",
+                        id, m.button
+                    ));
+                }
                 if let Action::Keystroke { key, mods } = &m.action {
                     if crate::keymap::key_code(key).is_none() {
                         problems.push(format!(
@@ -329,9 +345,9 @@ impl Config {
 }
 
 /// Default config location (macOS `dirs::config_dir()`):
-/// `~/Library/Application Support/remouse/config.toml`.
+/// `~/Library/Application Support/zmouse/config.toml`.
 pub fn default_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("remouse").join("config.toml"))
+    dirs::config_dir().map(|d| d.join("zmouse").join("config.toml"))
 }
 
 /// Load a config from an explicit path, or the default location.
@@ -400,7 +416,7 @@ mod tests {
                 }],
             }],
         };
-        let dir = std::env::temp_dir().join("remouse-test");
+        let dir = std::env::temp_dir().join("zmouse-test");
         let path = dir.join("round_trip.toml");
         save(&path, &cfg).expect("save");
         let loaded = load(Some(&path)).expect("load");

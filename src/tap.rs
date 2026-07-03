@@ -20,8 +20,8 @@ const KEY_C: u16 = 8;
 /// Run the remap tap until the process is killed. Blocks on the current thread's run loop.
 pub fn run_remap() {
     println!(
-        "remouse tap: remapping mouse button {} (\"back\") -> Cmd+C.\n\
-         To stop: focus THIS terminal, then Ctrl+C (or `pkill -f remouse` elsewhere).\n\
+        "zmouse tap: remapping mouse button {} (\"back\") -> Cmd+C.\n\
+         To stop: focus THIS terminal, then Ctrl+C (or `pkill -f zmouse` elsewhere).\n\
          (Requires Accessibility permission for your terminal.)",
         TARGET_BUTTON
     );
@@ -64,7 +64,7 @@ pub fn run_remap() {
             "\nERROR: failed to create the event tap.\n\
              This almost always means Accessibility permission is missing.\n\n\
              Grant it in: System Settings -> Privacy & Security -> Accessibility\n\
-             Add (and enable) the app you launched `remouse` from \
+             Add (and enable) the app you launched `zmouse` from \
              (e.g. Terminal / iTerm / your IDE), then re-run.\n"
         );
         std::process::exit(1);

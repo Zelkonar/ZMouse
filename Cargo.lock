@@ -2768,24 +2768,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "remouse"
-version = "0.1.0"
-dependencies = [
- "core-foundation 0.10.1",
- "core-graphics 0.25.0",
- "dirs",
- "eframe",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-core-foundation",
- "objc2-foundation 0.3.2",
- "objc2-io-kit",
- "objc2-service-management",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4490,6 +4472,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zmouse"
+version = "0.1.0"
+dependencies = [
+ "core-foundation 0.10.1",
+ "core-graphics 0.25.0",
+ "dirs",
+ "eframe",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-io-kit",
+ "objc2-service-management",
+ "serde",
+ "toml",
 ]
 
 [[package]]

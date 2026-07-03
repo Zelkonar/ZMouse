@@ -1,12 +1,12 @@
-# remouse — Milestone 1 findings
+# zmouse — Milestone 1 findings
 
 ## Status
 
 | Proof | Command | Verified |
 |-------|---------|----------|
-| #1 device enumeration | `remouse list` | ✅ works — see below |
-| #2 button → keystroke remap | `remouse tap` | ✅ verified — back button → Cmd+C (paste confirmed) |
-| #3 per-device correlation spike | `remouse probe` | ✅ works — correlation is reliable |
+| #1 device enumeration | `zmouse list` | ✅ works — see below |
+| #2 button → keystroke remap | `zmouse tap` | ✅ verified — back button → Cmd+C (paste confirmed) |
+| #3 per-device correlation spike | `zmouse probe` | ✅ works — correlation is reliable |
 
 ## Proof #1 — enumeration (verified)
 
@@ -77,26 +77,26 @@ Button numbering: **HID usage (page 0x09) = CGEvent button number + 1**
 ## Milestone 2 — headless per-device mapping engine (built)
 
 New modules: `config.rs` (TOML schema + loader/validator), `keymap.rs` (key/modifier tables),
-`engine.rs` (device tracking + tap dispatch). New subcommand: `remouse run [config.toml]`.
+`engine.rs` (device tracking + tap dispatch). New subcommand: `zmouse run [config.toml]`.
 
 - Config keyed by `registry_id`; actions: `keystroke` (key + mods), `button` (remap to another
   mouse button), `disabled`. Sample: `config.example.toml`. Default path:
-  `~/.config/remouse/config.toml`.
+  `~/.config/zmouse/config.toml`.
 - Mechanism is exactly the probe-validated design: `hid_value_callback` records
   `LAST_DEVICE_FOR_BUTTON[button] = registry_id` (thread_local), the tap closure reads it to
   resolve the device, then applies `mappings[(device, button)]`.
 - Only "other" mouse buttons (3+) are tapped; left/right/middle left alone for safety.
 
-Verified: `remouse run ./config.example.toml` loads, validates, prints the mapping table, and
+Verified: `zmouse run ./config.example.toml` loads, validates, prints the mapping table, and
 starts the tap. **Live remap behavior still needs a manual click-test** (record result below).
 
-Manual test result: ✅ verified on ROG Chakram Core — `remouse run ./config.example.toml`
+Manual test result: ✅ verified on ROG Chakram Core — `zmouse run ./config.example.toml`
 gives back→Copy and forward→Paste. (Note: `tap` is the hardcoded back-only demo; the real
 engine is `run`.) Probe also confirmed forward = CGEvent button 4 (HID button usage 5).
 
 ## `probe` is now a discovery tool (for new hardware)
 
-`remouse probe` logs HID input across button (0x09) / keyboard (0x07) / consumer (0x0C) pages
+`zmouse probe` logs HID input across button (0x09) / keyboard (0x07) / consumer (0x0C) pages
 with device identity, alongside the CGEventTap view of **both** mouse buttons and keystrokes.
 Use it to learn how a new mouse's buttons present:
 - `[TAP] OtherMouseDown` => a real mouse button (remappable by the engine today).
@@ -107,14 +107,14 @@ Use it to learn how a new mouse's buttons present:
 
 A 19-button MMO mouse is incoming. On many such mice (Razer Naga / Logitech G600 style) the
 thumb-grid buttons are exposed as a **separate HID interface that emits keystrokes**, not
-`OtherMouseDown` events — and the mouse may show up as **multiple devices** in `remouse list`.
+`OtherMouseDown` events — and the mouse may show up as **multiple devices** in `zmouse list`.
 If `probe` shows `[TAP] KeyDown` for those buttons, the engine needs a new interception path:
 tap `KeyDown`/`KeyUp`, and remap keystroke->action per-device (same HID-correlation trick, keyed
 on keyboard usage instead of button usage). Decide this once we see the probe output.
 
 ## Milestone 3 — native menu-bar app (built)
 
-New module `menubar.rs` (objc2-app-kit `NSStatusItem`), new subcommand `remouse menu [config]`.
+New module `menubar.rs` (objc2-app-kit `NSStatusItem`), new subcommand `zmouse menu [config]`.
 `engine.rs` refactored: `install()` puts the tap + HID manager on the *current* run loop and
 returns a handle (no loop run); `run()` = install + `CFRunLoop::run_current` (headless);
 `menubar::run()` = install + `NSApplication::run()`. Both share the one main-thread run loop —
@@ -124,22 +124,22 @@ single process, no daemon.
 - Menu: **Enabled** (checkbox toggling the tap via `CGEventTapEnable`), **Reload config**
   (hot-swaps the `Rc<RefCell<Mappings>>` from disk), a **Configured devices** section, **Quit**.
 - Mappings are now `Rc<RefCell<..>>` so reload swaps them live without rebuilding the tap.
-- Menu actions handled by a `define_class!` NSObject subclass (`RemouseMenuHandler`) whose ivars
+- Menu actions handled by a `define_class!` NSObject subclass (`ZMouseMenuHandler`) whose ivars
   hold the shared mappings + config path + toggle item.
 
-Verified: `remouse menu ./config.example.toml` launches, installs the tap, and stays alive.
+Verified: `zmouse menu ./config.example.toml` launches, installs the tap, and stays alive.
 **Visual/interaction test (icon + menu items) still needs a manual check.**
 
 Manual menu test result: ✅ verified — 🖱 icon appears, remapping works, Enabled toggle
 enables/disables the tap as expected, Quit exits cleanly.
 
-Not yet done (future): bundle as a real `.app` (so Accessibility is granted to remouse itself,
+Not yet done (future): bundle as a real `.app` (so Accessibility is granted to zmouse itself,
 not the terminal), launch-at-login, and a GUI config editor. Scroll-wheel + keystroke-emitting
 buttons (for the MMO mouse) still pending too.
 
 ## Milestone 4 — GUI config editor (built)
 
-New module `editor.rs` (egui/eframe **0.35**), new subcommand `remouse edit [config.toml]`, and
+New module `editor.rs` (egui/eframe **0.35**), new subcommand `zmouse edit [config.toml]`, and
 a menu item "Edit mappings…" that spawns the editor as a **separate process** (so eframe's winit
 loop never fights the agent's NSApp/event-tap loop). Editor edits the TOML; agent applies via
 "Reload config".
@@ -192,7 +192,7 @@ self-map made it fire instantly, but ANY button->button remap would loop.
 
 Fix (engine.rs):
 - Stamp every synthesized event with a marker in `EVENT_SOURCE_USER_DATA` (field 42),
-  `REMOUSE_TAG = 0x5245_4D53`, and at the top of the tap callback **ignore events carrying that
+  `ZMOUSE_TAG = 0x5245_4D53`, and at the top of the tap callback **ignore events carrying that
   tag** (return `Keep`). Standard "don't reprocess your own injected events" technique.
 - Also handle `TapDisabledByTimeout` / `TapDisabledByUserInput` by re-enabling the tap, so a tap
   the system kills (e.g. after a slow callback) self-heals instead of going dead.
@@ -202,10 +202,10 @@ tag-and-skip it. Applies to future scroll/keystroke synthesis too.
 
 ## Milestone 5 — .app bundle + launch-at-login (built)
 
-- `scripts/bundle.sh` builds `dist/remouse.app`: release binary → `Contents/MacOS/remouse`,
+- `scripts/bundle.sh` builds `dist/zmouse.app`: release binary → `Contents/MacOS/zmouse`,
   `Info.plist` with `LSUIElement` (menu-bar agent, no Dock icon), `PkgInfo`, then ad-hoc
   `codesign`. Rerun after code changes. `dist/` is gitignored.
-- `main.rs`: bare `remouse` (and a `-psn_...` launch arg) now defaults to `menu`, so a
+- `main.rs`: bare `zmouse` (and a `-psn_...` launch arg) now defaults to `menu`, so a
   double-clicked .app launches the agent instead of printing help+exiting. Added `help`.
 - Menu gained **Launch at login** (objc2 `SMAppService::mainAppService().register/unregister`,
   status→checkmark). Only works from the bundled .app; via `cargo`/CLI it logs an error.
@@ -213,16 +213,16 @@ tag-and-skip it. Applies to future scroll/keystroke synthesis too.
 Caveats to remember:
 - **Signing / permission persistence (SOLVED for local dev):** ad-hoc signing keys TCC on the
   content hash, so grants reset every rebuild. Fixed by signing with a **stable self-signed
-  "Code Signing" cert** named `remouse-dev` (created in Keychain Access). `bundle.sh` auto-uses it
-  if present (env `REMOUSE_SIGN_ID` overrides), else falls back to ad-hoc. The cert is untrusted
+  "Code Signing" cert** named `zmouse-dev` (created in Keychain Access). `bundle.sh` auto-uses it
+  if present (env `ZMOUSE_SIGN_ID` overrides), else falls back to ad-hoc. The cert is untrusted
   (`CSSMERR_TP_NOT_TRUSTED`) — that's fine: `codesign` still signs with it, and the designated
-  requirement becomes `identifier "com.jeffreywolf.remouse" and certificate leaf = H"<certhash>"`,
+  requirement becomes `identifier "com.jeffreywolf.zmouse" and certificate leaf = H"<certhash>"`,
   which is **stable across rebuilds**, so TCC grants persist. (Untrusted only matters for
   Gatekeeper/distribution, which local use doesn't care about.) A real **Developer ID** cert
   ($99/yr) is only needed for notarized distribution.
 - Bundled app needs BOTH Accessibility (event tap) and Input Monitoring (HID capture) granted in
   System Settings → Privacy & Security. Switching signing identity (e.g. ad-hoc → cert) is a
-  one-time re-grant: remove the old entry, re-add `/Applications/remouse.app`.
+  one-time re-grant: remove the old entry, re-add `/Applications/zmouse.app`.
 - For launch-at-login + stable identity, copy to **/Applications** rather than running from `dist/`.
 - No app icon yet (generic). Menu-bar agent so no Dock icon anyway.
 

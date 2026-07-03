@@ -1,8 +1,8 @@
 # ZMouse example config.
 #
-# Live location (macOS): ~/Library/Application Support/remouse/config.toml
-# Easiest way to build one: the GUI editor (menu bar -> "Edit mappings…", or `remouse edit`).
-# Use `remouse probe` to discover a device's vendor/product ids and its button numbers.
+# Live location (macOS): ~/Library/Application Support/zmouse/config.toml
+# Easiest way to build one: the GUI editor (menu bar -> "Edit mappings…", or `zmouse edit`).
+# Use `zmouse probe` to discover a device's vendor/product ids and its button numbers.
 
 # Global scroll-wheel cleanup (applies to discrete wheels only; trackpads are never touched).
 [scroll]
@@ -18,7 +18,7 @@ product_id = 0x00b7
 name = "ROG Chakram"       # cosmetic label only; matching is by id
 
 [[device.mapping]]
-button = 3                 # "back" (see `remouse probe` for button numbers)
+button = 3                 # "back" (see `zmouse probe` for button numbers)
 action = { type = "keystroke", key = "c", mods = ["cmd"] }
 
 [[device.mapping]]

@@ -1,4 +1,4 @@
-//! `remouse scrolldbg` — a read-only diagnostic that dumps the raw delta fields of every
+//! `zmouse scrolldbg` — a read-only diagnostic that dumps the raw delta fields of every
 //! discrete mouse-wheel event, so we can see *why* some apps ignore weak up-ticks.
 //!
 //! A worn encoder can emit a scroll-up event whose line delta (AXIS_1 = 11) is 0 or tiny even

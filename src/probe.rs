@@ -91,14 +91,14 @@ fn registry_entry_id(device: &IOHIDDevice) -> Option<u64> {
 /// Run both streams until killed. Logs interleaved [HID] and [TAP] lines for eyeball correlation.
 pub fn run_probe() {
     println!(
-        "remouse probe: discovery tool. Logs HID input (button/keyboard/consumer pages) with\n\
+        "zmouse probe: discovery tool. Logs HID input (button/keyboard/consumer pages) with\n\
          device identity, plus the CGEventTap view (mouse buttons AND keystrokes).\n\
          Press every button on the mouse to see how each one presents:\n\
            - a [TAP] type=OtherMouseDown  => a real mouse button (remappable now)\n\
            - a [TAP] type=KeyDown         => the button emits a keystroke instead\n\
            - [HID] page/device tells you which physical device (and interface) it came from.\n\
          To quit: click THIS terminal to focus it, then Ctrl+C \
-         (or `pkill -f remouse` from another terminal).\n"
+         (or `pkill -f zmouse` from another terminal).\n"
     );
 
     // 1) HID manager with an input-value callback, scheduled on the current run loop.

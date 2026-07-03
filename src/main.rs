@@ -1,9 +1,9 @@
-//! remouse — a macOS mouse-button remapper (SteerMouse-style), Milestone 1 PoC.
+//! zmouse — a macOS mouse-button remapper (SteerMouse-style), Milestone 1 PoC.
 //!
 //! Three subcommands, each proving one load-bearing macOS API in isolation:
-//!   remouse list   -> enumerate connected mice (IOHIDManager)
-//!   remouse tap    -> intercept button "back" and remap to Cmd+C (CGEventTap)
-//!   remouse probe  -> HID + event-tap correlation spike for per-device mapping
+//!   zmouse list   -> enumerate connected mice (IOHIDManager)
+//!   zmouse tap    -> intercept button "back" and remap to Cmd+C (CGEventTap)
+//!   zmouse probe  -> HID + event-tap correlation spike for per-device mapping
 
 mod config;
 mod editor;
@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 fn main() {
     let arg = std::env::args().nth(1).unwrap_or_default();
-    // Default to the menu-bar app: bare `remouse`, or a double-clicked .app (which launches with
+    // Default to the menu-bar app: bare `zmouse`, or a double-clicked .app (which launches with
     // no args, or on older macOS a `-psn_...` process-serial argument).
     let cmd = if arg.is_empty() || arg.starts_with("-psn") {
         "menu"
@@ -45,16 +45,16 @@ fn main() {
 
 fn print_usage() {
     eprintln!(
-        "remouse — macOS mouse-button remapper\n\n\
+        "zmouse — macOS mouse-button remapper\n\n\
          usage:\n  \
-         remouse           launch the menu-bar app (default)\n  \
-         remouse menu [config.toml]  menu-bar app\n  \
-         remouse edit [config.toml]  open the GUI mapping editor\n  \
-         remouse run [config.toml]   apply mappings headless (no UI)\n  \
-         remouse list      list connected mice\n  \
-         remouse probe     log HID + event-tap streams (find button numbers)\n  \
-         remouse scrolldbg dump raw scroll-wheel delta fields (diagnose weak ticks)\n  \
-         remouse tap       remap the \"back\" button to Cmd+C (hardcoded demo)\n"
+         zmouse           launch the menu-bar app (default)\n  \
+         zmouse menu [config.toml]  menu-bar app\n  \
+         zmouse edit [config.toml]  open the GUI mapping editor\n  \
+         zmouse run [config.toml]   apply mappings headless (no UI)\n  \
+         zmouse list      list connected mice\n  \
+         zmouse probe     log HID + event-tap streams (find button numbers)\n  \
+         zmouse scrolldbg dump raw scroll-wheel delta fields (diagnose weak ticks)\n  \
+         zmouse tap       remap the \"back\" button to Cmd+C (hardcoded demo)\n"
     );
 }
 
@@ -100,8 +100,8 @@ fn print_config_help() {
         eprintln!("Expected a config at: {}", p.display());
     }
     eprintln!(
-        "Pass a path explicitly: `remouse run ./config.toml`\n\
-         See the sample config in the repo (config.example.toml). Use `remouse list`\n\
+        "Pass a path explicitly: `zmouse run ./config.toml`\n\
+         See the sample config in the repo (config.example.toml). Use `zmouse list`\n\
          to find your mouse's registry_id."
     );
 }

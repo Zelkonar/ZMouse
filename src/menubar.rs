@@ -63,7 +63,7 @@ struct Ivars {
 define_class!(
     // SAFETY: superclass NSObject has no subclassing requirements; no Drop impl.
     #[unsafe(super(NSObject))]
-    #[name = "RemouseMenuHandler"]
+    #[name = "ZMouseMenuHandler"]
     #[ivars = Ivars]
     struct MenuHandler;
 
@@ -152,7 +152,7 @@ define_class!(
             if let Err(e) = set_login_item(want) {
                 eprintln!(
                     "Launch-at-login change failed: {e}\n\
-                     (This only works when running the bundled remouse.app, not via `cargo`/CLI.)"
+                     (This only works when running the bundled zmouse.app, not via `cargo`/CLI.)"
                 );
             }
             self.refresh_login_item();

@@ -176,7 +176,7 @@ const HID_USAGE_PAGE_KEYBOARD: u32 = 0x07;
 /// Marker stamped into every event we synthesize (in the source-user-data field), so our own
 /// tap can recognize and pass through its own injected events instead of re-processing them.
 /// Without this, a button->button remap re-enters the HID-level tap and loops forever.
-const REMOUSE_TAG: i64 = 0x5245_4D53; // "REMS"
+const ZMOUSE_TAG: i64 = 0x5245_4D53; // "REMS"
 
 /// Install the HID tracker + event tap onto the current thread's run loop. Does not run the loop.
 /// Returns `Err` if the event tap can't be created (usually missing Accessibility permission).
@@ -218,7 +218,7 @@ pub fn install(mappings: SharedMappings, key_mappings: SharedMappings) -> Result
                     return CallbackResult::Keep;
                 }
                 // Ignore events we synthesized ourselves (prevents an infinite re-entrancy loop).
-                if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA) == REMOUSE_TAG {
+                if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA) == ZMOUSE_TAG {
                     return CallbackResult::Keep;
                 }
                 // Scroll-wheel jitter filter: drop spurious opposite-direction glitch ticks.
@@ -247,6 +247,12 @@ pub fn install(mappings: SharedMappings, key_mappings: SharedMappings) -> Result
                     return CallbackResult::Drop;
                 }
                 let button = event.get_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER);
+                // Hard floor: never touch the left (primary) button. Today left-clicks aren't even
+                // in the tap mask, but if that ever changes this guarantees left-click can't be
+                // dropped or remapped, so the user can always recover.
+                if button == crate::config::PROTECTED_BUTTON {
+                    return CallbackResult::Keep;
+                }
                 let ident = LAST_DEVICE_FOR_BUTTON.with(|m| m.borrow().get(&button).copied());
                 let Some(ident) = ident else {
                     return CallbackResult::Keep; // unknown origin -> pass through
@@ -381,7 +387,7 @@ fn apply_action(action: &Action, source: &CGEventSource, at: CGPoint, is_down: b
                 CGEvent::new_mouse_event(source.clone(), mouse_type, at, CGMouseButton::Left)
             {
                 ev.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, *button);
-                ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, REMOUSE_TAG);
+                ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, ZMOUSE_TAG);
                 ev.post(CGEventTapLocation::HID);
             }
         }
@@ -397,14 +403,14 @@ fn send_keystroke(source: &CGEventSource, key: &str, mods: &[String]) {
         if flags != CGEventFlags::empty() {
             down.set_flags(flags);
         }
-        down.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, REMOUSE_TAG);
+        down.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, ZMOUSE_TAG);
         down.post(CGEventTapLocation::HID);
     }
     if let Ok(up) = CGEvent::new_keyboard_event(source.clone(), code, false) {
         if flags != CGEventFlags::empty() {
             up.set_flags(flags);
         }
-        up.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, REMOUSE_TAG);
+        up.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, ZMOUSE_TAG);
         up.post(CGEventTapLocation::HID);
     }
 }

@@ -1,13 +1,13 @@
 #!/bin/sh
-# Build remouse as a macOS .app bundle (menu-bar agent) and ad-hoc code-sign it.
+# Build zmouse as a macOS .app bundle (menu-bar agent) and ad-hoc code-sign it.
 #
 #   scripts/bundle.sh
 #
-# Output: dist/remouse.app  — copy it to /Applications for stable, permanent use.
+# Output: dist/zmouse.app  — copy it to /Applications for stable, permanent use.
 set -eu
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$REPO/dist/remouse.app"
+APP="$REPO/dist/zmouse.app"
 CONTENTS="$APP/Contents"
 
 echo "Building release binary…"
@@ -16,7 +16,7 @@ echo "Building release binary…"
 echo "Assembling $APP …"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-cp "$REPO/target/release/remouse" "$CONTENTS/MacOS/remouse"
+cp "$REPO/target/release/zmouse" "$CONTENTS/MacOS/zmouse"
 [ -f "$REPO/resources/AppIcon.icns" ] && cp "$REPO/resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
 cat > "$CONTENTS/Info.plist" <<'PLIST'
@@ -26,8 +26,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 <dict>
     <key>CFBundleName</key>            <string>ZMouse</string>
     <key>CFBundleDisplayName</key>     <string>ZMouse</string>
-    <key>CFBundleIdentifier</key>      <string>com.jeffreywolf.remouse</string>
-    <key>CFBundleExecutable</key>      <string>remouse</string>
+    <key>CFBundleIdentifier</key>      <string>com.jeffreywolf.zmouse</string>
+    <key>CFBundleExecutable</key>      <string>zmouse</string>
     <key>CFBundleVersion</key>         <string>0.1.0</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
@@ -43,7 +43,7 @@ printf 'APPL????' > "$CONTENTS/PkgInfo"
 
 # Sign with a stable self-signed identity if available (permissions then persist across
 # rebuilds); otherwise fall back to ad-hoc (permissions reset each rebuild).
-SIGN_ID="${REMOUSE_SIGN_ID:-remouse-dev}"
+SIGN_ID="${ZMOUSE_SIGN_ID:-remouse-dev}"
 if security find-identity -p codesigning 2>/dev/null | grep -q "\"$SIGN_ID\""; then
     echo "Code-signing with '$SIGN_ID' (stable identity — TCC permissions persist)…"
     codesign --force --deep --sign "$SIGN_ID" "$APP"
@@ -56,7 +56,7 @@ fi
 echo
 echo "Built: $APP"
 echo "Test it:      open \"$APP\""
-echo "Install it:   cp -R \"$APP\" /Applications/ && open /Applications/remouse.app"
+echo "Install it:   cp -R \"$APP\" /Applications/ && open /Applications/zmouse.app"
 echo
 echo "First launch: grant Accessibility AND Input Monitoring in"
-echo "System Settings -> Privacy & Security (add remouse.app to both)."
+echo "System Settings -> Privacy & Security (add zmouse.app to both)."

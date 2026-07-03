@@ -37,9 +37,9 @@ Think SteerMouse, but focused, scriptable, and yours.
 cargo run --release            # launches the menu-bar app
 
 # Or build a proper .app bundle (menu-bar agent, self-signed; displays as "ZMouse")
-scripts/bundle.sh              # -> dist/remouse.app
-cp -R dist/remouse.app /Applications/
-open /Applications/remouse.app
+scripts/bundle.sh              # -> dist/zmouse.app
+cp -R dist/zmouse.app /Applications/
+open /Applications/zmouse.app
 ```
 
 On first launch, grant **Accessibility** and **Input Monitoring** to the app. `scripts/bundle.sh`
@@ -48,26 +48,26 @@ signs with a stable self-signed identity so those grants persist across rebuilds
 ## Usage
 
 The GUI is the easy path: open the menu-bar app and choose **Edit mappings…** (or run
-`remouse edit`). Select a connected device, add button/key mappings, and save — the running app
+`zmouse edit`). Select a connected device, add button/key mappings, and save — the running app
 applies changes automatically.
 
-CLI subcommands (the binary is currently named `remouse`):
+CLI subcommands (the binary is currently named `zmouse`):
 
 | Command | What it does |
 | --- | --- |
-| `remouse` / `remouse menu` | Launch the menu-bar app (default) |
-| `remouse edit [config.toml]` | Open the GUI mapping editor |
-| `remouse run [config.toml]` | Apply mappings headless (no UI) |
-| `remouse list` | List connected mice (with vendor/product ids) |
-| `remouse probe` | Log HID + event-tap streams — find device ids and button numbers |
-| `remouse scrolldbg` | Dump raw scroll-wheel delta fields (diagnose weak ticks) |
+| `zmouse` / `zmouse menu` | Launch the menu-bar app (default) |
+| `zmouse edit [config.toml]` | Open the GUI mapping editor |
+| `zmouse run [config.toml]` | Apply mappings headless (no UI) |
+| `zmouse list` | List connected mice (with vendor/product ids) |
+| `zmouse probe` | Log HID + event-tap streams — find device ids and button numbers |
+| `zmouse scrolldbg` | Dump raw scroll-wheel delta fields (diagnose weak ticks) |
 
 ## Configuration
 
-Config lives at `~/Library/Application Support/remouse/config.toml`. You normally don't edit it by
+Config lives at `~/Library/Application Support/zmouse/config.toml`. You normally don't edit it by
 hand — the editor writes it — but see [`config.example.toml`](config.example.toml) for a fully
 commented reference covering per-device mappings, `also` grouping, keystroke buttons, and scroll
-settings. Use `remouse probe` to discover a device's ids and button numbers.
+settings. Use `zmouse probe` to discover a device's ids and button numbers.
 
 ## How it works
 

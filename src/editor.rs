@@ -1,6 +1,6 @@
 //! Milestone 4: GUI config editor (egui / eframe), run as a separate process.
 //!
-//! Launched via `remouse edit [config.toml]` (the menu-bar app spawns this as a child so the
+//! Launched via `zmouse edit [config.toml]` (the menu-bar app spawns this as a child so the
 //! two never fight over an event loop). It edits the same TOML the engine reads; the running
 //! agent watches that file and auto-applies changes on save.
 
@@ -33,8 +33,9 @@ thread_local! {
     static LAST_PRESS: RefCell<Option<CapturedPress>> = const { RefCell::new(None) };
 }
 
-/// HID input-value callback used only for "capture button". Records the most recent extra-button
-/// press (ignores left/right so clicking the Capture button itself doesn't self-trigger).
+/// HID input-value callback used only for "capture button". Records the most recent button press
+/// (any button, including left/right). The click that starts capture is discarded by the one-frame
+/// arming in `central_contents`, so it doesn't self-trigger.
 unsafe extern "C-unwind" fn capture_callback(
     _context: *mut c_void,
     _result: IOReturn,
@@ -49,11 +50,8 @@ unsafe extern "C-unwind" fn capture_callback(
     if value.integer_value() == 0 {
         return; // presses (down) only, not releases
     }
-    // HID usage is 1-indexed; CGEvent button is 0-indexed. Ignore left(0)/right(1).
+    // HID usage is 1-indexed; CGEvent button is 0-indexed (left=0, right=1, middle=2, …).
     let button = element.usage() as i64 - 1;
-    if button < 2 {
-        return;
-    }
     let (reg, vendor_id, product_id) = if sender.is_null() {
         (0, None, None)
     } else {
@@ -273,6 +271,9 @@ pub struct EditorApp {
     hid_manager: Option<CFRetained<IOHIDManager>>,
     /// Index (within the selected device) of the mapping row currently capturing a button.
     capturing: Option<usize>,
+    /// Becomes true one frame after capture begins, so the left-click on the "Capture" button
+    /// itself is discarded and only the *next* button press is captured (lets left/right work).
+    capture_armed: bool,
     /// Transient note shown after a capture (e.g. "press came from a different device").
     capture_note: String,
 }
@@ -302,6 +303,7 @@ impl EditorApp {
             scroll: config.scroll,
             hid_manager: None,
             capturing: None,
+            capture_armed: false,
             capture_note: String::new(),
         }
     }
@@ -332,6 +334,7 @@ impl EditorApp {
         LAST_PRESS.with(|p| *p.borrow_mut() = None);
         self.capture_note.clear();
         self.capturing = Some(row);
+        self.capture_armed = false; // skip the frame the Capture click lands on
     }
 
     fn to_config(&self) -> Config {
@@ -638,7 +641,11 @@ impl EditorApp {
 
         // Apply a pending captured button press to the row that requested it.
         if let Some(row) = self.capturing {
-            if let Some(press) = LAST_PRESS.with(|p| p.borrow_mut().take()) {
+            if !self.capture_armed {
+                // First frame after "Capture": swallow the left-click that started it, then arm.
+                LAST_PRESS.with(|p| *p.borrow_mut() = None);
+                self.capture_armed = true;
+            } else if let Some(press) = LAST_PRESS.with(|p| p.borrow_mut().take()) {
                 let dev = &self.devices[sel];
                 // Does the press match any of the device's identities (primary or grouped)?
                 let press_matches = |id: &DeviceId| match (id.vendor_id, id.product_id) {
@@ -649,16 +656,30 @@ impl EditorApp {
                     || press_matches(&dev.primary_id())
                     || dev.also.iter().any(press_matches);
                 let button = press.button;
-                if let Some(m) = self.devices[sel].mappings.get_mut(row) {
-                    m.button = button;
-                }
-                self.capture_note = if press.registry == 0 || same_device {
-                    format!("Captured button {button}.")
-                } else {
-                    format!(
-                        "Captured button {button} — note: that press came from a different device, not this one."
-                    )
+                let name = match button {
+                    0 => " (left click)",
+                    1 => " (right click)",
+                    2 => " (middle click)",
+                    _ => "",
                 };
+                let wrong_device = !(press.registry == 0 || same_device);
+                if button == config::PROTECTED_BUTTON {
+                    // Detected the left button, but it's protected — don't assign it.
+                    self.capture_note =
+                        "That's your left (primary) click — it's protected and can't be remapped."
+                            .to_string();
+                } else {
+                    if let Some(m) = self.devices[sel].mappings.get_mut(row) {
+                        m.button = button;
+                    }
+                    self.capture_note = if wrong_device {
+                        format!(
+                            "Captured button {button}{name} — note: that press came from a different device, not this one."
+                        )
+                    } else {
+                        format!("Captured button {button}{name}.")
+                    };
+                }
                 self.capturing = None;
             }
         }
@@ -722,7 +743,7 @@ impl EditorApp {
 
             ui.separator();
             ui.label(
-                "Button numbers: 3 = back, 4 = forward, 5+ = extra. Use `remouse probe` to find them.",
+                "Button numbers: 3 = back, 4 = forward, 5+ = extra. Use `zmouse probe` to find them.",
             );
             ui.add_space(6.0);
 
@@ -735,7 +756,8 @@ impl EditorApp {
                             // the panel is narrow, instead of the right-aligned button clipping.
                             ui.horizontal_wrapped(|ui| {
                                 ui.label("Button");
-                                ui.add(egui::DragValue::new(&mut m.button).range(0..=31));
+                                // Source starts at 1: button 0 (left click) is protected.
+                                ui.add(egui::DragValue::new(&mut m.button).range(1..=31));
                                 if ui
                                     .button(if capturing_row == Some(i) {
                                         "press a button…"
@@ -830,7 +852,7 @@ impl EditorApp {
             ui.separator();
             ui.label(
                 "Keystroke buttons (e.g. MMO thumb grid). \"Source key\" is what the button types by \
-                 default — find it with `remouse probe`. Only keys from THIS device are remapped.",
+                 default — find it with `zmouse probe`. Only keys from THIS device are remapped.",
             );
             ui.add_space(6.0);
 

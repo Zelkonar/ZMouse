@@ -1,4 +1,4 @@
-//! Milestone-1 spike #3: can we attribute an intercepted button event to a *specific* mouse?
+//! Discovery tool: attribute an intercepted button/keystroke event to a *specific* mouse.
 //!
 //! Strategy: run an `IOHIDManager` input-value callback (which carries the originating
 //! device) at the same time as a `CGEventTap` (which does not), and log both streams with

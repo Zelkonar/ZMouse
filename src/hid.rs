@@ -1,6 +1,7 @@
-//! Milestone-1 proof #1: enumerate connected mice and read their identity.
+//! Enumerate connected mice and read their identity (vendor/product/registry ids).
 //!
-//! Uses the `objc2-io-kit` / `objc2-core-foundation` ecosystem (distinct from `tap.rs`).
+//! Uses the `objc2-io-kit` / `objc2-core-foundation` ecosystem, distinct from the `core-graphics`
+//! event-tap ecosystem used by the engine.
 
 use std::ffi::c_void;
 

@@ -1,4 +1,4 @@
-//! Milestone 4: GUI config editor (egui / eframe), run as a separate process.
+//! GUI config editor (egui / eframe), run as a separate process.
 //!
 //! Launched via `zmouse edit [config.toml]` (the menu-bar app spawns this as a child so the
 //! two never fight over an event loop). It edits the same TOML the engine reads; the running

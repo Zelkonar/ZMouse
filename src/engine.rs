@@ -1,8 +1,8 @@
 //! The per-device mapping engine.
 //!
-//! Combines the two proven pieces from Milestone 1:
+//! Combines two pieces:
 //!   * an `IOHIDManager` input-value callback records *which device* pressed each button
-//!     (validated by the `probe` spike: HID fires before the tap on the same thread), and
+//!     (the `probe` tool confirms HID fires before the tap on the same thread), and
 //!   * a `CGEventTap` intercepts the button and applies that device's configured mapping.
 //!
 //! Everything runs on one run-loop thread, so the device-tracking state is a `thread_local`

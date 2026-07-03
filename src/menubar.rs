@@ -1,4 +1,4 @@
-//! Milestone 3: native macOS menu-bar app (`NSStatusItem`).
+//! Native macOS menu-bar app (`NSStatusItem`).
 //!
 //! Shares the main thread's run loop with the event tap: `engine::install()` puts the tap +
 //! HID manager onto the current run loop, then `NSApplication::run()` drives that same loop, so

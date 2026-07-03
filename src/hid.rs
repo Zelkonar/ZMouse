@@ -25,11 +25,11 @@ pub struct MouseDevice {
 
 /// Enumerate all HID devices and keep the ones that look like pointers/mice.
 pub fn list_mice() -> Vec<MouseDevice> {
-    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone as u32);
+    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone);
 
     // Match everything (None), then filter by usage below. Avoids building a match dictionary.
     unsafe { manager.set_device_matching(None) };
-    let _ = manager.open(kIOHIDOptionsTypeNone as u32);
+    let _ = manager.open(kIOHIDOptionsTypeNone);
 
     let Some(set) = manager.devices() else {
         return Vec::new();
@@ -40,8 +40,7 @@ pub fn list_mice() -> Vec<MouseDevice> {
         .map(read_device)
         // Generic Desktop (0x01), Mouse (0x02) or Pointer (0x01).
         .filter(|d| {
-            d.primary_usage_page == Some(0x01)
-                && matches!(d.primary_usage, Some(0x02) | Some(0x01))
+            d.primary_usage_page == Some(0x01) && matches!(d.primary_usage, Some(0x02) | Some(0x01))
         })
         // Never surface the built-in Apple trackpad/keyboard: remapping the internal pointer is a
         // great way to lock yourself out, so it's excluded from discovery entirely.

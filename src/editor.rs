@@ -314,12 +314,12 @@ impl EditorApp {
         if self.hid_manager.is_some() {
             return;
         }
-        let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone as u32);
+        let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone);
         unsafe { manager.set_device_matching(None) };
         unsafe {
             manager.register_input_value_callback(Some(capture_callback), std::ptr::null_mut());
         }
-        let _ = manager.open(kIOHIDOptionsTypeNone as u32);
+        let _ = manager.open(kIOHIDOptionsTypeNone);
         unsafe {
             if let Some(rl) = CFRunLoop::current() {
                 manager.schedule_with_run_loop(&rl, kCFRunLoopDefaultMode.unwrap());
@@ -573,10 +573,7 @@ impl EditorApp {
                 if existing_keys.contains(&key) {
                     return None;
                 }
-                let name = c
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("({})", id.desc()));
+                let name = c.name.clone().unwrap_or_else(|| format!("({})", id.desc()));
                 Some(Addable { id, name })
             })
             .collect();
@@ -613,17 +610,16 @@ impl EditorApp {
                     self.selected = Some(self.devices.len() - 1);
                 }
                 // Merge this connected identity into the selected device as an extra identity.
-                if let Some((sel, ref target_name)) = merge_target {
-                    if ui
+                if let Some((sel, ref target_name)) = merge_target
+                    && ui
                         .small_button("⊕ merge")
                         .on_hover_text(format!(
                             "Treat this as the same physical device as \"{target_name}\" \
                              (shares its mappings)."
                         ))
                         .clicked()
-                    {
-                        self.devices[sel].also.push(a.id.clone());
-                    }
+                {
+                    self.devices[sel].also.push(a.id.clone());
                 }
             });
         }
@@ -748,89 +744,93 @@ impl EditorApp {
             ui.add_space(6.0);
 
             let mut remove: Option<usize> = None;
-            egui::ScrollArea::vertical().id_salt("buttons").max_height(220.0).show(ui, |ui| {
-                for (i, m) in dev.mappings.iter_mut().enumerate() {
-                    ui.push_id(i, |ui| {
-                        ui.group(|ui| {
-                            // Wrapping row so every control (incl. Remove) stays visible when
-                            // the panel is narrow, instead of the right-aligned button clipping.
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label("Button");
-                                // Source starts at 1: button 0 (left click) is protected.
-                                ui.add(egui::DragValue::new(&mut m.button).range(1..=31));
-                                if ui
-                                    .button(if capturing_row == Some(i) {
-                                        "press a button…"
-                                    } else {
-                                        "Capture"
-                                    })
-                                    .clicked()
-                                {
-                                    start_capture = Some(i);
-                                }
+            egui::ScrollArea::vertical()
+                .id_salt("buttons")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    for (i, m) in dev.mappings.iter_mut().enumerate() {
+                        ui.push_id(i, |ui| {
+                            ui.group(|ui| {
+                                // Wrapping row so every control (incl. Remove) stays visible when
+                                // the panel is narrow, instead of the right-aligned button clipping.
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label("Button");
+                                    // Source starts at 1: button 0 (left click) is protected.
+                                    ui.add(egui::DragValue::new(&mut m.button).range(1..=31));
+                                    if ui
+                                        .button(if capturing_row == Some(i) {
+                                            "press a button…"
+                                        } else {
+                                            "Capture"
+                                        })
+                                        .clicked()
+                                    {
+                                        start_capture = Some(i);
+                                    }
 
-                                egui::ComboBox::from_id_salt("kind")
-                                    .selected_text(match m.kind {
-                                        ActionKind::Keystroke => "Keystroke",
-                                        ActionKind::Button => "Mouse button",
-                                        ActionKind::Disabled => "Disabled",
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut m.kind,
-                                            ActionKind::Keystroke,
-                                            "Keystroke",
-                                        );
-                                        ui.selectable_value(
-                                            &mut m.kind,
-                                            ActionKind::Button,
-                                            "Mouse button",
-                                        );
-                                        ui.selectable_value(
-                                            &mut m.kind,
-                                            ActionKind::Disabled,
-                                            "Disabled",
-                                        );
-                                    });
+                                    egui::ComboBox::from_id_salt("kind")
+                                        .selected_text(match m.kind {
+                                            ActionKind::Keystroke => "Keystroke",
+                                            ActionKind::Button => "Mouse button",
+                                            ActionKind::Disabled => "Disabled",
+                                        })
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut m.kind,
+                                                ActionKind::Keystroke,
+                                                "Keystroke",
+                                            );
+                                            ui.selectable_value(
+                                                &mut m.kind,
+                                                ActionKind::Button,
+                                                "Mouse button",
+                                            );
+                                            ui.selectable_value(
+                                                &mut m.kind,
+                                                ActionKind::Disabled,
+                                                "Disabled",
+                                            );
+                                        });
 
-                                ui.add_space(8.0);
-                                if ui.button("Remove").clicked() {
-                                    remove = Some(i);
+                                    ui.add_space(8.0);
+                                    if ui.button("Remove").clicked() {
+                                        remove = Some(i);
+                                    }
+                                });
+
+                                match m.kind {
+                                    ActionKind::Keystroke => {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label("Key:");
+                                            ui.add(
+                                                egui::TextEdit::singleline(&mut m.key)
+                                                    .desired_width(60.0)
+                                                    .hint_text("c"),
+                                            );
+                                            ui.checkbox(&mut m.mods.cmd, "Cmd");
+                                            ui.checkbox(&mut m.mods.shift, "Shift");
+                                            ui.checkbox(&mut m.mods.opt, "Opt");
+                                            ui.checkbox(&mut m.mods.ctrl, "Ctrl");
+                                        });
+                                    }
+                                    ActionKind::Button => {
+                                        ui.horizontal(|ui| {
+                                            ui.label("Target mouse button:");
+                                            ui.add(
+                                                egui::DragValue::new(&mut m.target_button)
+                                                    .range(0..=31),
+                                            );
+                                        });
+                                    }
+                                    ActionKind::Disabled => {
+                                        ui.weak("Button press is swallowed.");
+                                    }
                                 }
                             });
-
-                            match m.kind {
-                                ActionKind::Keystroke => {
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.label("Key:");
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut m.key)
-                                                .desired_width(60.0)
-                                                .hint_text("c"),
-                                        );
-                                        ui.checkbox(&mut m.mods.cmd, "Cmd");
-                                        ui.checkbox(&mut m.mods.shift, "Shift");
-                                        ui.checkbox(&mut m.mods.opt, "Opt");
-                                        ui.checkbox(&mut m.mods.ctrl, "Ctrl");
-                                    });
-                                }
-                                ActionKind::Button => {
-                                    ui.horizontal(|ui| {
-                                        ui.label("Target mouse button:");
-                                        ui.add(
-                                            egui::DragValue::new(&mut m.target_button).range(0..=31),
-                                        );
-                                    });
-                                }
-                                ActionKind::Disabled => {
-                                    ui.weak("Button press is swallowed.");
-                                }
-                            }
                         });
-                    });
-                    ui.add_space(4.0);
-                }
-            });
+                        ui.add_space(4.0);
+                    }
+                });
 
             if let Some(i) = remove {
                 dev.mappings.remove(i);

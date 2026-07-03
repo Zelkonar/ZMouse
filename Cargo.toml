@@ -2,6 +2,12 @@
 name = "zmouse"
 version = "0.1.0"
 edition = "2024"
+description = "Per-device mouse button and keystroke remapper for macOS"
+license = "MIT"
+repository = "https://github.com/Zelkonar/ZMouse"
+readme = "README.md"
+keywords = ["macos", "mouse", "remap", "hid", "menu-bar"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 core-foundation = "0.10.1"

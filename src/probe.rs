@@ -102,12 +102,12 @@ pub fn run_probe() {
     );
 
     // 1) HID manager with an input-value callback, scheduled on the current run loop.
-    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone as u32);
+    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone);
     unsafe { manager.set_device_matching(None) };
     unsafe {
         manager.register_input_value_callback(Some(input_value_callback), std::ptr::null_mut());
     }
-    let _ = manager.open(kIOHIDOptionsTypeNone as u32);
+    let _ = manager.open(kIOHIDOptionsTypeNone);
     unsafe {
         let rl = CFRunLoop::current().expect("no current run loop");
         manager.schedule_with_run_loop(&rl, kCFRunLoopDefaultMode.unwrap());
@@ -145,7 +145,7 @@ pub fn run_probe() {
             );
             CallbackResult::Keep
         },
-        || core_foundation::runloop::CFRunLoop::run_current(),
+        core_foundation::runloop::CFRunLoop::run_current,
     );
 
     if result.is_err() {

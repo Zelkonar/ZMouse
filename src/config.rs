@@ -1,4 +1,5 @@
-//! TOML configuration: per-device button mappings keyed by `registry_id`.
+//! TOML configuration: per-device button and keystroke mappings, keyed by a device's stable
+//! vendor/product id (with a registry-id fallback).
 //!
 //! Example (default path on macOS: `~/Library/Application Support/zmouse/config.toml`):
 //!
@@ -119,7 +120,11 @@ pub struct DeviceId {
 
 /// The stable lookup key for an identity: its vendor/product composite if both are set, else its
 /// registry id. `None` if neither is present.
-pub fn identity_key(registry_id: Option<u64>, vendor_id: Option<i64>, product_id: Option<i64>) -> Option<u64> {
+pub fn identity_key(
+    registry_id: Option<u64>,
+    vendor_id: Option<i64>,
+    product_id: Option<i64>,
+) -> Option<u64> {
     match (vendor_id, product_id) {
         (Some(v), Some(p)) => Some(vidpid_key(v, p)),
         _ => registry_id,
@@ -127,7 +132,11 @@ pub fn identity_key(registry_id: Option<u64>, vendor_id: Option<i64>, product_id
 }
 
 /// Human-readable form of an identity, for logs and the editor.
-pub fn identity_desc(registry_id: Option<u64>, vendor_id: Option<i64>, product_id: Option<i64>) -> String {
+pub fn identity_desc(
+    registry_id: Option<u64>,
+    vendor_id: Option<i64>,
+    product_id: Option<i64>,
+) -> String {
     match (vendor_id, product_id, registry_id) {
         (Some(v), Some(p), _) => format!("vendor 0x{v:04x} product 0x{p:04x}"),
         (_, _, Some(r)) => format!("registry_id {r}"),
@@ -432,8 +441,10 @@ mod tests {
         assert_eq!(d.mapping.len(), 3);
         // Tagged enum survives the round trip.
         assert!(matches!(d.mapping[2].action, Action::Disabled));
-        assert!(matches!(&d.mapping[0].action, Action::Keystroke { key, mods }
-            if key == "c" && mods == &["cmd".to_string()]));
+        assert!(
+            matches!(&d.mapping[0].action, Action::Keystroke { key, mods }
+            if key == "c" && mods == &["cmd".to_string()])
+        );
         // Keystroke-triggered mapping survives too, and resolves to the right keycode.
         assert_eq!(d.key.len(), 1);
         assert_eq!(d.key[0].key, "7");
@@ -463,7 +474,10 @@ mod tests {
         let key = vidpid_key(0x1532, 0x00b7);
         // The vendor/product key is tagged above the registry-id range, so it can't collide.
         assert!(key & VIDPID_TAG != 0);
-        assert!(matches!(cfg.resolve().get(&(key, 3)), Some(Action::Button { button: 2 })));
+        assert!(matches!(
+            cfg.resolve().get(&(key, 3)),
+            Some(Action::Button { button: 2 })
+        ));
         // A device with no identity at all is flagged.
         let orphan = Config {
             scroll: ScrollConfig::default(),

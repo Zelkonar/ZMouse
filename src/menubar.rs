@@ -193,7 +193,12 @@ impl MenuHandler {
 
     /// Load config from disk, mutate the `[scroll]` settings, persist, apply live, refresh menu.
     fn edit_scroll(&self, f: impl FnOnce(&mut ScrollConfig)) {
-        let Some(save_path) = self.ivars().config_path.clone().or_else(config::default_path) else {
+        let Some(save_path) = self
+            .ivars()
+            .config_path
+            .clone()
+            .or_else(config::default_path)
+        else {
             eprintln!("cannot determine config path to save scroll settings");
             return;
         };
@@ -209,11 +214,13 @@ impl MenuHandler {
     }
 
     fn refresh_scroll_menu(&self, scroll: &ScrollConfig) {
-        self.ivars().scroll_filter_item.setState(if scroll.jitter_filter {
-            NSControlStateValueOn
-        } else {
-            NSControlStateValueOff
-        });
+        self.ivars()
+            .scroll_filter_item
+            .setState(if scroll.jitter_filter {
+                NSControlStateValueOn
+            } else {
+                NSControlStateValueOff
+            });
         for item in &self.ivars().guard_items {
             let on = item.tag() as u64 == scroll.reversal_guard_ms;
             item.setState(if on {
@@ -222,11 +229,13 @@ impl MenuHandler {
                 NSControlStateValueOff
             });
         }
-        self.ivars().boost_item.setState(if scroll.boost_weak_ticks {
-            NSControlStateValueOn
-        } else {
-            NSControlStateValueOff
-        });
+        self.ivars()
+            .boost_item
+            .setState(if scroll.boost_weak_ticks {
+                NSControlStateValueOn
+            } else {
+                NSControlStateValueOff
+            });
         for item in &self.ivars().floor_items {
             let on = item.tag() as i64 == scroll.min_tick_pixels;
             item.setState(if on {
@@ -239,7 +248,11 @@ impl MenuHandler {
 
     /// mtime of the config file we're watching, if it exists.
     fn config_mtime(&self) -> Option<SystemTime> {
-        let path = self.ivars().config_path.clone().or_else(config::default_path)?;
+        let path = self
+            .ivars()
+            .config_path
+            .clone()
+            .or_else(config::default_path)?;
         std::fs::metadata(path).ok()?.modified().ok()
     }
 
@@ -286,7 +299,8 @@ pub fn run(config: Config, config_path: Option<PathBuf>) {
         }
     };
 
-    let status_item = NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
+    let status_item =
+        NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
     if let Some(button) = status_item.button(mtm) {
         // Native SF Symbol — crisp and auto-adapts to light/dark menu bars. Fall back to emoji.
         let symbol = NSImage::imageWithSystemSymbolName_accessibilityDescription(

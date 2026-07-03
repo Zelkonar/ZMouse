@@ -29,10 +29,13 @@ pub fn run() {
             CGEventTapOptions::ListenOnly, // observe only; never alter/drop
             vec![CGEventType::ScrollWheel],
             |_proxy, _etype, event| {
-                let cont = event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_IS_CONTINUOUS);
-                let line = event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_DELTA_AXIS_1);
-                let fixed = event
-                    .get_double_value_field(EventField::SCROLL_WHEEL_EVENT_FIXED_POINT_DELTA_AXIS_1);
+                let cont =
+                    event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_IS_CONTINUOUS);
+                let line =
+                    event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_DELTA_AXIS_1);
+                let fixed = event.get_double_value_field(
+                    EventField::SCROLL_WHEEL_EVENT_FIXED_POINT_DELTA_AXIS_1,
+                );
                 let pixel =
                     event.get_double_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1);
                 let arrow = if line > 0 || fixed > 0.0 {
@@ -63,8 +66,9 @@ pub fn run() {
         .mach_port()
         .create_runloop_source(0)
         .expect("runloop source");
-    CFRunLoop::get_current()
-        .add_source(&loop_source, unsafe { core_foundation::runloop::kCFRunLoopCommonModes });
+    CFRunLoop::get_current().add_source(&loop_source, unsafe {
+        core_foundation::runloop::kCFRunLoopCommonModes
+    });
     tap.enable();
     CFRunLoop::run_current();
 }

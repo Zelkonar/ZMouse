@@ -55,10 +55,10 @@ impl DeviceIdent {
     /// Find this device's action for `sub` (a button number or keycode), preferring the stable
     /// vendor/product key and falling back to the registry id.
     fn lookup<'a>(&self, map: &'a Mappings, sub: i64) -> Option<&'a Action> {
-        if let Some(vp) = self.vidpid {
-            if let Some(a) = map.get(&(vp, sub)) {
-                return Some(a);
-            }
+        if let Some(vp) = self.vidpid
+            && let Some(a) = map.get(&(vp, sub))
+        {
+            return Some(a);
         }
         map.get(&(self.registry, sub))
     }
@@ -118,9 +118,7 @@ fn is_scroll_glitch(event: &CGEvent) -> bool {
         let mut st = s.borrow_mut();
         match *st {
             // Opposite direction, arriving too soon after the last accepted scroll => glitch.
-            Some((last_dir, last_at))
-                if dir != last_dir && now.duration_since(last_at) < guard =>
-            {
+            Some((last_dir, last_at)) if dir != last_dir && now.duration_since(last_at) < guard => {
                 true // drop; keep state anchored to the real scroll direction
             }
             // Same direction, or a genuine reversal after a pause => accept and update state.
@@ -151,7 +149,10 @@ fn boost_weak_scroll(event: &CGEvent) {
     let want_pixel = line * min_px; // signed: same direction as the line delta
     let pixel = event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1);
     if pixel.abs() < want_pixel.abs() {
-        event.set_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1, want_pixel);
+        event.set_integer_value_field(
+            EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1,
+            want_pixel,
+        );
         // Fixed-point delta is in line units; a normal single detent is ~1.0 per line.
         event.set_double_value_field(
             EventField::SCROLL_WHEEL_EVENT_FIXED_POINT_DELTA_AXIS_1,
@@ -182,12 +183,12 @@ const ZMOUSE_TAG: i64 = 0x5245_4D53; // "REMS"
 /// Returns `Err` if the event tap can't be created (usually missing Accessibility permission).
 pub fn install(mappings: SharedMappings, key_mappings: SharedMappings) -> Result<Installed, ()> {
     // HID manager: record which device presses which button.
-    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone as u32);
+    let manager = IOHIDManager::new(None, kIOHIDOptionsTypeNone);
     unsafe { manager.set_device_matching(None) };
     unsafe {
         manager.register_input_value_callback(Some(hid_value_callback), std::ptr::null_mut());
     }
-    let _ = manager.open(kIOHIDOptionsTypeNone as u32);
+    let _ = manager.open(kIOHIDOptionsTypeNone);
     unsafe {
         let rl = CFRunLoop::current().expect("no current run loop");
         manager.schedule_with_run_loop(&rl, kCFRunLoopDefaultMode.unwrap());
@@ -268,12 +269,10 @@ pub fn install(mappings: SharedMappings, key_mappings: SharedMappings) -> Result
         )?
     };
 
-    let loop_source = tap
-        .mach_port()
-        .create_runloop_source(0)
-        .map_err(|_| ())?;
-    core_foundation::runloop::CFRunLoop::get_current()
-        .add_source(&loop_source, unsafe { core_foundation::runloop::kCFRunLoopCommonModes });
+    let loop_source = tap.mach_port().create_runloop_source(0).map_err(|_| ())?;
+    core_foundation::runloop::CFRunLoop::get_current().add_source(&loop_source, unsafe {
+        core_foundation::runloop::kCFRunLoopCommonModes
+    });
 
     TAP_PORT.store(
         tap.mach_port().as_concrete_TypeRef() as *mut c_void,

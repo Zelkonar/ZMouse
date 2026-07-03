@@ -1,9 +1,7 @@
-//! zmouse — a macOS mouse-button remapper (SteerMouse-style), Milestone 1 PoC.
+//! zmouse — a per-device mouse-button and keystroke remapper for macOS (SteerMouse-style).
 //!
-//! Three subcommands, each proving one load-bearing macOS API in isolation:
-//!   zmouse list   -> enumerate connected mice (IOHIDManager)
-//!   zmouse tap    -> intercept button "back" and remap to Cmd+C (CGEventTap)
-//!   zmouse probe  -> HID + event-tap correlation spike for per-device mapping
+//! Runs as a menu-bar app by default; the other subcommands cover headless operation, the GUI
+//! editor, and diagnostics. See `print_usage` for the full list.
 
 mod config;
 mod editor;
@@ -13,7 +11,6 @@ mod keymap;
 mod menubar;
 mod probe;
 mod scrolldbg;
-mod tap;
 
 use std::path::PathBuf;
 
@@ -28,7 +25,6 @@ fn main() {
     };
     match cmd {
         "list" => hid::print_mice(),
-        "tap" => tap::run_remap(),
         "probe" => probe::run_probe(),
         "scrolldbg" => scrolldbg::run(),
         "run" => run_engine(),
@@ -53,8 +49,7 @@ fn print_usage() {
          zmouse run [config.toml]   apply mappings headless (no UI)\n  \
          zmouse list      list connected mice\n  \
          zmouse probe     log HID + event-tap streams (find button numbers)\n  \
-         zmouse scrolldbg dump raw scroll-wheel delta fields (diagnose weak ticks)\n  \
-         zmouse tap       remap the \"back\" button to Cmd+C (hardcoded demo)\n"
+         zmouse scrolldbg dump raw scroll-wheel delta fields (diagnose weak ticks)\n"
     );
 }
 
@@ -102,6 +97,6 @@ fn print_config_help() {
     eprintln!(
         "Pass a path explicitly: `zmouse run ./config.toml`\n\
          See the sample config in the repo (config.example.toml). Use `zmouse list`\n\
-         to find your mouse's registry_id."
+         to find your mouse's vendor/product id."
     );
 }

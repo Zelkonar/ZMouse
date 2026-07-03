@@ -1,17 +1,44 @@
+# ZMouse example config.
+#
+# Live location (macOS): ~/Library/Application Support/remouse/config.toml
+# Easiest way to build one: the GUI editor (menu bar -> "Edit mappings…", or `remouse edit`).
+# Use `remouse probe` to discover a device's vendor/product ids and its button numbers.
+
+# Global scroll-wheel cleanup (applies to discrete wheels only; trackpads are never touched).
+[scroll]
+jitter_filter = false      # drop spurious opposite-direction ticks from a worn encoder
+reversal_guard_ms = 80     # an opposite tick within this window is treated as a glitch
+boost_weak_ticks = false   # floor a slow tick to a full detent so pixel-precise apps don't ignore it
+min_tick_pixels = 10       # pixels a single tick should move (~10 = one normal detent)
+
+# A device, matched by its stable USB vendor/product id (preferred — survives reconnects/reboots).
 [[device]]
-registry_id = 4295289702
-name = "ROG CHAKRAM CORE"
+vendor_id = 0x1532
+product_id = 0x00b7
+name = "ROG Chakram"       # cosmetic label only; matching is by id
 
 [[device.mapping]]
-button = 3
-
-[device.mapping.action]
-type = "button"
-button = 3
+button = 3                 # "back" (see `remouse probe` for button numbers)
+action = { type = "keystroke", key = "c", mods = ["cmd"] }
 
 [[device.mapping]]
-button = 4
+button = 4                 # "forward"
+action = { type = "button", button = 2 }   # -> middle click
 
-[device.mapping.action]
-type = "button"
-button = 4
+[[device.mapping]]
+button = 5
+action = { type = "disabled" }              # swallow the button entirely
+
+# The SAME physical mouse can present different identities (its 2.4 GHz dongle vs Bluetooth, or a
+# separate pointer + keyboard interface). List the extras under `also`; they share the mappings above.
+[[device.also]]
+vendor_id = 0x068e
+product_id = 0x00b5        # e.g. the same mouse over Bluetooth
+[[device.also]]
+registry_id = 4295298668  # fallback: a registry id, for an interface with no usable vendor/product id
+
+# An MMO mouse's thumb buttons often emit keystrokes rather than mouse buttons. Remap them by the
+# key they emit under [[device.key]] — only keys from THIS device are affected, never a real keyboard.
+[[device.key]]
+key = "7"                  # the key the button types by default
+action = { type = "keystroke", key = "v", mods = ["cmd"] }

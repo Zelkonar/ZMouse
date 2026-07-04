@@ -156,3 +156,27 @@ pub fn registry_entry_id(device: &IOHIDDevice) -> Option<u64> {
     let kr = unsafe { IORegistryEntryGetRegistryEntryID(service, &mut id) };
     if kr == 0 { Some(id) } else { None }
 }
+
+/// A device's full identity: (registry entry id, vendor id, product id), each optional. Shared by
+/// the HID callbacks (engine, editor capture, probe) so they read identity the same way.
+pub fn device_identity(device: &IOHIDDevice) -> (Option<u64>, Option<i64>, Option<i64>) {
+    (
+        registry_entry_id(device),
+        vendor_id(device),
+        product_id(device),
+    )
+}
+
+/// Same as [`device_identity`], but from the raw `sender` pointer an input-value callback receives.
+/// Returns `None` if the pointer is null.
+///
+/// # Safety
+/// `sender` must be null or a valid `IOHIDDevice` pointer (as passed to an IOHIDManager callback).
+pub unsafe fn identity_from_sender(
+    sender: *mut std::ffi::c_void,
+) -> Option<(Option<u64>, Option<i64>, Option<i64>)> {
+    if sender.is_null() {
+        return None;
+    }
+    Some(device_identity(unsafe { &*(sender as *const IOHIDDevice) }))
+}

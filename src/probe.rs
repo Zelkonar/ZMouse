@@ -17,10 +17,7 @@ unsafe extern "C" {
 }
 
 use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
-use objc2_io_kit::{
-    IOHIDDevice, IOHIDManager, IOHIDValue, IORegistryEntryGetRegistryEntryID, IOReturn,
-    kIOHIDOptionsTypeNone,
-};
+use objc2_io_kit::{IOHIDManager, IOHIDValue, IOReturn, kIOHIDOptionsTypeNone};
 
 use core_graphics::event::{
     CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
@@ -53,16 +50,8 @@ unsafe extern "C-unwind" fn input_value_callback(
     }
     let ts = value.time_stamp();
 
-    let (reg_id, vid, pid) = if sender.is_null() {
-        (None, None, None)
-    } else {
-        let device = unsafe { &*(sender as *const IOHIDDevice) };
-        (
-            registry_entry_id(device),
-            crate::hid::vendor_id(device),
-            crate::hid::product_id(device),
-        )
-    };
+    let (reg_id, vid, pid) =
+        unsafe { crate::hid::identity_from_sender(sender) }.unwrap_or((None, None, None));
 
     println!(
         "[HID] t={:>20} device={:<20} vid=0x{:04x} pid=0x{:04x} page={:<8} usage={} value={}",
@@ -76,16 +65,6 @@ unsafe extern "C-unwind" fn input_value_callback(
         usage,
         int_val,
     );
-}
-
-fn registry_entry_id(device: &IOHIDDevice) -> Option<u64> {
-    let service = device.service();
-    if service == 0 {
-        return None;
-    }
-    let mut id: u64 = 0;
-    let kr = unsafe { IORegistryEntryGetRegistryEntryID(service, &mut id) };
-    if kr == 0 { Some(id) } else { None }
 }
 
 /// Run both streams until killed. Logs interleaved [HID] and [TAP] lines for eyeball correlation.

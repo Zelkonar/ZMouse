@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::time::Instant;
 
 use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
-use objc2_io_kit::{IOHIDDevice, IOHIDManager, IOHIDValue, IOReturn, kIOHIDOptionsTypeNone};
+use objc2_io_kit::{IOHIDManager, IOHIDValue, IOReturn, kIOHIDOptionsTypeNone};
 
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
@@ -33,7 +33,7 @@ use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
 
 use crate::config::{self, Action, Config};
-use crate::hid::{self, registry_entry_id};
+use crate::hid;
 use crate::keymap;
 
 /// (device_key, CGEvent button number) -> action. The device key is a vendor/product composite
@@ -441,16 +441,12 @@ unsafe extern "C-unwind" fn hid_value_callback(
     if page != HID_USAGE_PAGE_BUTTON && page != HID_USAGE_PAGE_KEYBOARD {
         return;
     }
-    if sender.is_null() {
-        return;
-    }
-    let device = unsafe { &*(sender as *const IOHIDDevice) };
-    let Some(registry) = registry_entry_id(device) else {
-        return;
-    };
     // Reading vendor/product on each press is cheap (presses are rare) and lets us match the
     // device by its stable USB identity rather than the ephemeral registry id.
-    let vidpid = match (hid::vendor_id(device), hid::product_id(device)) {
+    let Some((Some(registry), vid, pid)) = (unsafe { hid::identity_from_sender(sender) }) else {
+        return;
+    };
+    let vidpid = match (vid, pid) {
         (Some(v), Some(p)) => Some(config::vidpid_key(v, p)),
         _ => None,
     };

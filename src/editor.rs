@@ -10,12 +10,12 @@ use std::path::PathBuf;
 
 use eframe::egui;
 use objc2_core_foundation::{CFRetained, CFRunLoop, kCFRunLoopDefaultMode};
-use objc2_io_kit::{IOHIDDevice, IOHIDManager, IOHIDValue, IOReturn, kIOHIDOptionsTypeNone};
+use objc2_io_kit::{IOHIDManager, IOHIDValue, IOReturn, kIOHIDOptionsTypeNone};
 
 use crate::config::{
     self, Action, Config, DeviceConfig, DeviceId, KeyMapping, Mapping, ScrollConfig,
 };
-use crate::hid::{self, MouseDevice, registry_entry_id};
+use crate::hid::{self, MouseDevice};
 
 /// A button press captured from the HID stream, with enough identity to tell whether it came from
 /// the device the user is editing.
@@ -52,19 +52,11 @@ unsafe extern "C-unwind" fn capture_callback(
     }
     // HID usage is 1-indexed; CGEvent button is 0-indexed (left=0, right=1, middle=2, …).
     let button = element.usage() as i64 - 1;
-    let (reg, vendor_id, product_id) = if sender.is_null() {
-        (0, None, None)
-    } else {
-        let device = unsafe { &*(sender as *const IOHIDDevice) };
-        (
-            registry_entry_id(device).unwrap_or(0),
-            hid::vendor_id(device),
-            hid::product_id(device),
-        )
-    };
+    let (reg, vendor_id, product_id) =
+        unsafe { hid::identity_from_sender(sender) }.unwrap_or((None, None, None));
     LAST_PRESS.with(|p| {
         *p.borrow_mut() = Some(CapturedPress {
-            registry: reg,
+            registry: reg.unwrap_or(0),
             vendor_id,
             product_id,
             button,
@@ -121,37 +113,41 @@ impl ModSet {
     }
 }
 
-/// Editable form of one button mapping.
-struct MappingRow {
-    button: i64,
+/// The action half of a mapping row: what to do when the trigger fires. Shared by button mappings
+/// (`MappingRow`) and keystroke mappings (`KeyRow`), which differ only in their trigger.
+#[derive(Clone)]
+struct ActionForm {
     kind: ActionKind,
     key: String,
     mods: ModSet,
     target_button: i64,
 }
 
-impl MappingRow {
-    fn from_mapping(m: &Mapping) -> Self {
-        let mut row = MappingRow {
-            button: m.button,
+impl ActionForm {
+    fn disabled() -> Self {
+        ActionForm {
             kind: ActionKind::Disabled,
             key: String::new(),
             mods: ModSet::default(),
             target_button: 2,
-        };
-        match &m.action {
+        }
+    }
+
+    fn from_action(action: &Action) -> Self {
+        let mut f = ActionForm::disabled();
+        match action {
             Action::Keystroke { key, mods } => {
-                row.kind = ActionKind::Keystroke;
-                row.key = key.clone();
-                row.mods = ModSet::from_slice(mods);
+                f.kind = ActionKind::Keystroke;
+                f.key = key.clone();
+                f.mods = ModSet::from_slice(mods);
             }
             Action::Button { button } => {
-                row.kind = ActionKind::Button;
-                row.target_button = *button;
+                f.kind = ActionKind::Button;
+                f.target_button = *button;
             }
-            Action::Disabled => row.kind = ActionKind::Disabled,
+            Action::Disabled => {}
         }
-        row
+        f
     }
 
     fn to_action(&self) -> Action {
@@ -164,6 +160,21 @@ impl MappingRow {
                 button: self.target_button,
             },
             ActionKind::Disabled => Action::Disabled,
+        }
+    }
+}
+
+/// Editable form of one button mapping.
+struct MappingRow {
+    button: i64,
+    action: ActionForm,
+}
+
+impl MappingRow {
+    fn from_mapping(m: &Mapping) -> Self {
+        MappingRow {
+            button: m.button,
+            action: ActionForm::from_action(&m.action),
         }
     }
 }
@@ -172,53 +183,65 @@ impl MappingRow {
 /// buttons). Same action shape as `MappingRow`, but triggered by a source key name.
 struct KeyRow {
     source: String,
-    kind: ActionKind,
-    key: String,
-    mods: ModSet,
-    target_button: i64,
+    action: ActionForm,
 }
 
 impl KeyRow {
     fn from_mapping(k: &KeyMapping) -> Self {
-        let mut row = KeyRow {
+        KeyRow {
             source: k.key.clone(),
-            kind: ActionKind::Disabled,
-            key: String::new(),
-            mods: ModSet::default(),
-            target_button: 2,
-        };
-        match &k.action {
-            Action::Keystroke { key, mods } => {
-                row.kind = ActionKind::Keystroke;
-                row.key = key.clone();
-                row.mods = ModSet::from_slice(mods);
-            }
-            Action::Button { button } => {
-                row.kind = ActionKind::Button;
-                row.target_button = *button;
-            }
-            Action::Disabled => row.kind = ActionKind::Disabled,
-        }
-        row
-    }
-
-    fn to_action(&self) -> Action {
-        match self.kind {
-            ActionKind::Keystroke => Action::Keystroke {
-                key: self.key.clone(),
-                mods: self.mods.to_vec(),
-            },
-            ActionKind::Button => Action::Button {
-                button: self.target_button,
-            },
-            ActionKind::Disabled => Action::Disabled,
+            action: ActionForm::from_action(&k.action),
         }
     }
 
     fn to_key_mapping(&self) -> KeyMapping {
         KeyMapping {
             key: self.source.clone(),
-            action: self.to_action(),
+            action: self.action.to_action(),
+        }
+    }
+}
+
+/// The action-kind ComboBox (Keystroke / Mouse button / Disabled), shared by both row kinds.
+fn action_kind_combo(ui: &mut egui::Ui, kind: &mut ActionKind, salt: &str) {
+    egui::ComboBox::from_id_salt(salt)
+        .selected_text(match kind {
+            ActionKind::Keystroke => "Keystroke",
+            ActionKind::Button => "Mouse button",
+            ActionKind::Disabled => "Disabled",
+        })
+        .show_ui(ui, |ui| {
+            ui.selectable_value(kind, ActionKind::Keystroke, "Keystroke");
+            ui.selectable_value(kind, ActionKind::Button, "Mouse button");
+            ui.selectable_value(kind, ActionKind::Disabled, "Disabled");
+        });
+}
+
+/// The per-kind parameter widgets shown below a row header (key + mods / target button / nothing).
+fn action_params_ui(ui: &mut egui::Ui, action: &mut ActionForm) {
+    match action.kind {
+        ActionKind::Keystroke => {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Key:");
+                ui.add(
+                    egui::TextEdit::singleline(&mut action.key)
+                        .desired_width(60.0)
+                        .hint_text("c"),
+                );
+                ui.checkbox(&mut action.mods.cmd, "Cmd");
+                ui.checkbox(&mut action.mods.shift, "Shift");
+                ui.checkbox(&mut action.mods.opt, "Opt");
+                ui.checkbox(&mut action.mods.ctrl, "Ctrl");
+            });
+        }
+        ActionKind::Button => {
+            ui.horizontal(|ui| {
+                ui.label("Target mouse button:");
+                ui.add(egui::DragValue::new(&mut action.target_button).range(0..=31));
+            });
+        }
+        ActionKind::Disabled => {
+            ui.weak("Press is swallowed.");
         }
     }
 }
@@ -358,7 +381,7 @@ impl EditorApp {
                         .iter()
                         .map(|m| Mapping {
                             button: m.button,
-                            action: m.to_action(),
+                            action: m.action.to_action(),
                         })
                         .collect(),
                     key: d.keys.iter().map(KeyRow::to_key_mapping).collect(),
@@ -768,29 +791,7 @@ impl EditorApp {
                                         start_capture = Some(i);
                                     }
 
-                                    egui::ComboBox::from_id_salt("kind")
-                                        .selected_text(match m.kind {
-                                            ActionKind::Keystroke => "Keystroke",
-                                            ActionKind::Button => "Mouse button",
-                                            ActionKind::Disabled => "Disabled",
-                                        })
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut m.kind,
-                                                ActionKind::Keystroke,
-                                                "Keystroke",
-                                            );
-                                            ui.selectable_value(
-                                                &mut m.kind,
-                                                ActionKind::Button,
-                                                "Mouse button",
-                                            );
-                                            ui.selectable_value(
-                                                &mut m.kind,
-                                                ActionKind::Disabled,
-                                                "Disabled",
-                                            );
-                                        });
+                                    action_kind_combo(ui, &mut m.action.kind, "kind");
 
                                     ui.add_space(8.0);
                                     if ui.button("Remove").clicked() {
@@ -798,34 +799,7 @@ impl EditorApp {
                                     }
                                 });
 
-                                match m.kind {
-                                    ActionKind::Keystroke => {
-                                        ui.horizontal_wrapped(|ui| {
-                                            ui.label("Key:");
-                                            ui.add(
-                                                egui::TextEdit::singleline(&mut m.key)
-                                                    .desired_width(60.0)
-                                                    .hint_text("c"),
-                                            );
-                                            ui.checkbox(&mut m.mods.cmd, "Cmd");
-                                            ui.checkbox(&mut m.mods.shift, "Shift");
-                                            ui.checkbox(&mut m.mods.opt, "Opt");
-                                            ui.checkbox(&mut m.mods.ctrl, "Ctrl");
-                                        });
-                                    }
-                                    ActionKind::Button => {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Target mouse button:");
-                                            ui.add(
-                                                egui::DragValue::new(&mut m.target_button)
-                                                    .range(0..=31),
-                                            );
-                                        });
-                                    }
-                                    ActionKind::Disabled => {
-                                        ui.weak("Button press is swallowed.");
-                                    }
-                                }
+                                action_params_ui(ui, &mut m.action);
                             });
                         });
                         ui.add_space(4.0);
@@ -839,10 +813,7 @@ impl EditorApp {
             if ui.button("+ Add mapping").clicked() {
                 dev.mappings.push(MappingRow {
                     button: 3,
-                    kind: ActionKind::Disabled,
-                    key: String::new(),
-                    mods: ModSet::default(),
-                    target_button: 2,
+                    action: ActionForm::disabled(),
                 });
             }
 
@@ -871,62 +842,13 @@ impl EditorApp {
                                             .desired_width(48.0)
                                             .hint_text("7"),
                                     );
-                                    egui::ComboBox::from_id_salt("kkind")
-                                        .selected_text(match k.kind {
-                                            ActionKind::Keystroke => "Keystroke",
-                                            ActionKind::Button => "Mouse button",
-                                            ActionKind::Disabled => "Disabled",
-                                        })
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut k.kind,
-                                                ActionKind::Keystroke,
-                                                "Keystroke",
-                                            );
-                                            ui.selectable_value(
-                                                &mut k.kind,
-                                                ActionKind::Button,
-                                                "Mouse button",
-                                            );
-                                            ui.selectable_value(
-                                                &mut k.kind,
-                                                ActionKind::Disabled,
-                                                "Disabled",
-                                            );
-                                        });
+                                    action_kind_combo(ui, &mut k.action.kind, "kkind");
                                     ui.add_space(8.0);
                                     if ui.button("Remove").clicked() {
                                         remove_key = Some(i);
                                     }
                                 });
-                                match k.kind {
-                                    ActionKind::Keystroke => {
-                                        ui.horizontal_wrapped(|ui| {
-                                            ui.label("Key:");
-                                            ui.add(
-                                                egui::TextEdit::singleline(&mut k.key)
-                                                    .desired_width(60.0)
-                                                    .hint_text("c"),
-                                            );
-                                            ui.checkbox(&mut k.mods.cmd, "Cmd");
-                                            ui.checkbox(&mut k.mods.shift, "Shift");
-                                            ui.checkbox(&mut k.mods.opt, "Opt");
-                                            ui.checkbox(&mut k.mods.ctrl, "Ctrl");
-                                        });
-                                    }
-                                    ActionKind::Button => {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Target mouse button:");
-                                            ui.add(
-                                                egui::DragValue::new(&mut k.target_button)
-                                                    .range(0..=31),
-                                            );
-                                        });
-                                    }
-                                    ActionKind::Disabled => {
-                                        ui.weak("Key press is swallowed.");
-                                    }
-                                }
+                                action_params_ui(ui, &mut k.action);
                             });
                         });
                         ui.add_space(4.0);
@@ -939,10 +861,7 @@ impl EditorApp {
             if ui.button("+ Add key mapping").clicked() {
                 dev.keys.push(KeyRow {
                     source: String::new(),
-                    kind: ActionKind::Disabled,
-                    key: String::new(),
-                    mods: ModSet::default(),
-                    target_button: 2,
+                    action: ActionForm::disabled(),
                 });
             }
 

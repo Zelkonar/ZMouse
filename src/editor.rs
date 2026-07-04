@@ -282,6 +282,30 @@ impl IdentityRow {
     fn desc(&self) -> String {
         config::identity_desc(self.registry_id, self.vendor_id, self.product_id)
     }
+
+    /// Does this identity refer to the given connected device?
+    fn matches(&self, c: &MouseDevice) -> bool {
+        if let (Some(v), Some(p)) = (self.vendor_id, self.product_id) {
+            c.vendor_id == Some(v) && c.product_id == Some(p)
+        } else if let Some(r) = self.registry_id {
+            c.registry_entry_id == Some(r)
+        } else {
+            false
+        }
+    }
+
+    /// Auto label from the matching connected device's transport (e.g. "Bluetooth", "USB").
+    fn auto_label(&self, connected: &[MouseDevice]) -> Option<String> {
+        let c = connected.iter().find(|c| self.matches(c))?;
+        hid::friendly_transport(c.transport.as_deref())
+    }
+
+    /// The label to show: the live transport label if the device is connected, else the last one we
+    /// stored (auto-generated when it was connected). Empty string if we've never seen it connected.
+    fn display_label(&self, connected: &[MouseDevice]) -> String {
+        self.auto_label(connected)
+            .unwrap_or_else(|| self.label.trim().to_string())
+    }
 }
 
 /// Editable form of one device and its mappings.
@@ -342,7 +366,16 @@ impl EditorApp {
                 identities: d
                     .identities()
                     .iter()
-                    .map(IdentityRow::from_device_id)
+                    .map(|id| {
+                        let mut row = IdentityRow::from_device_id(id);
+                        // Auto-fill an empty label from the device's transport, if it's connected.
+                        if row.label.trim().is_empty()
+                            && let Some(l) = row.auto_label(&connected)
+                        {
+                            row.label = l;
+                        }
+                        row
+                    })
                     .collect(),
                 mappings: d.mapping.iter().map(MappingRow::from_mapping).collect(),
                 keys: d.key.iter().map(KeyRow::from_mapping).collect(),
@@ -426,16 +459,7 @@ impl EditorApp {
     }
 
     fn identity_connected(&self, id: &IdentityRow) -> bool {
-        self.connected.iter().any(|c| {
-            // Prefer the stable USB identity; fall back to registry id.
-            if let (Some(v), Some(p)) = (id.vendor_id, id.product_id) {
-                c.vendor_id == Some(v) && c.product_id == Some(p)
-            } else if let Some(r) = id.registry_id {
-                c.registry_entry_id == Some(r)
-            } else {
-                false
-            }
-        })
+        self.connected.iter().any(|c| id.matches(c))
     }
 
     fn save(&mut self) {
@@ -604,7 +628,7 @@ impl EditorApp {
             .iter()
             .filter_map(|c| {
                 // Prefer the stable USB identity; only fall back to registry id when absent.
-                let id = if c.vendor_id.is_some() && c.product_id.is_some() {
+                let mut id = if c.vendor_id.is_some() && c.product_id.is_some() {
                     IdentityRow {
                         vendor_id: c.vendor_id,
                         product_id: c.product_id,
@@ -616,6 +640,8 @@ impl EditorApp {
                         ..Default::default()
                     }
                 };
+                // Auto-label from how it's connected (Bluetooth / USB); persists in the config.
+                id.label = hid::friendly_transport(c.transport.as_deref()).unwrap_or_default();
                 let key = id.device_key()?;
                 if existing_keys.contains(&key) {
                     return None;
@@ -723,11 +749,16 @@ impl EditorApp {
         }
 
         let connected = self.is_connected(&self.devices[sel]);
-        // Per-identity connection dots, in identity order.
+        // Per-identity connection dots + auto-generated labels, in identity order.
         let ids_connected: Vec<bool> = self.devices[sel]
             .identities
             .iter()
             .map(|id| self.identity_connected(id))
+            .collect();
+        let id_labels: Vec<String> = self.devices[sel]
+            .identities
+            .iter()
+            .map(|id| id.display_label(&self.connected))
             .collect();
         let capturing_row = self.capturing;
         let mut start_capture: Option<usize> = None;
@@ -758,28 +789,29 @@ impl EditorApp {
                     }
                     ui.weak("(all equal — they share the mappings below)");
                 });
-                for (i, id) in dev.identities.iter_mut().enumerate() {
+                for (i, id) in dev.identities.iter().enumerate() {
                     ui.horizontal(|ui| {
                         let dot = if *ids_connected.get(i).unwrap_or(&false) {
                             "●"
                         } else {
                             "○"
                         };
-                        ui.label(dot);
-                        ui.add(
-                            egui::TextEdit::singleline(&mut id.label)
-                                .desired_width(120.0)
-                                .hint_text("label (e.g. Bluetooth)"),
-                        );
-                        ui.label(format!("— {}", id.desc()));
+                        // Label is auto-generated from the transport (Bluetooth / USB); read-only.
+                        let label = id_labels.get(i).map(String::as_str).unwrap_or("");
+                        let text = if label.is_empty() {
+                            id.desc()
+                        } else {
+                            format!("{label} — {}", id.desc())
+                        };
+                        ui.label(format!("{dot} {text}"));
                         if ui.small_button("Remove").clicked() {
                             remove_identity = Some(i);
                         }
                     });
                 }
                 ui.weak(
-                    "Add another: connect the device the other way (dongle/Bluetooth), pick it in \
-                     the left list, and click \"⊕ merge\".",
+                    "Labels are auto-detected from how each is connected. Add another: connect the \
+                     device the other way (dongle/Bluetooth), pick it in the left list, click \"⊕ merge\".",
                 );
             });
 

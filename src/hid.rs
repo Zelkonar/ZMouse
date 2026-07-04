@@ -22,6 +22,24 @@ pub struct MouseDevice {
     pub registry_entry_id: Option<u64>,
     pub primary_usage: Option<i64>,
     pub primary_usage_page: Option<i64>,
+    /// How the device is connected ("USB", "Bluetooth", …) — used to auto-label its identity.
+    pub transport: Option<String>,
+}
+
+/// Turn a raw HID transport string into a short human label, e.g. "USB" -> "USB",
+/// "Bluetooth Low Energy" -> "Bluetooth". `None` if the transport is unknown.
+pub fn friendly_transport(transport: Option<&str>) -> Option<String> {
+    let t = transport?;
+    let lower = t.to_ascii_lowercase();
+    Some(if lower.contains("bluetooth") {
+        "Bluetooth".into()
+    } else if lower.contains("usb") {
+        "USB".into()
+    } else if lower.contains("spi") || lower.contains("apple") {
+        "Built-in".into()
+    } else {
+        t.to_string()
+    })
 }
 
 /// Enumerate all HID devices and keep the ones that look like pointers/mice.
@@ -80,6 +98,10 @@ pub fn print_mice() {
         );
         println!("    serial={}", d.serial.as_deref().unwrap_or("<none>"));
         println!(
+            "    transport={}",
+            d.transport.as_deref().unwrap_or("<none>")
+        );
+        println!(
             "    locationID={} registryEntryID={}",
             d.location_id
                 .map(|v| v.to_string())
@@ -116,6 +138,7 @@ fn read_device(device: &IOHIDDevice) -> MouseDevice {
         registry_entry_id: registry_entry_id(device),
         primary_usage: number_prop(device, "PrimaryUsage"),
         primary_usage_page: number_prop(device, "PrimaryUsagePage"),
+        transport: string_prop(device, "Transport"),
     }
 }
 

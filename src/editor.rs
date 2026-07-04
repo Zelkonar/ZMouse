@@ -246,39 +246,70 @@ fn action_params_ui(ui: &mut egui::Ui, action: &mut ActionForm) {
     }
 }
 
-/// Editable form of one device and its mappings.
-struct DeviceRow {
-    /// Fallback identity; ephemeral (changes on reconnect / transport switch).
+/// Editable form of one identity: a human-friendly label plus the id data. All of a device's
+/// identities are equal — there is no primary/secondary.
+#[derive(Clone, Default)]
+struct IdentityRow {
+    label: String,
     registry_id: Option<u64>,
-    /// Stable USB identity — preferred. Set when the device was added from the connected list.
     vendor_id: Option<i64>,
     product_id: Option<i64>,
-    /// Additional identities for the same physical device (grouped in via "merge into").
-    also: Vec<DeviceId>,
-    name: String,
-    mappings: Vec<MappingRow>,
-    keys: Vec<KeyRow>,
 }
 
-impl DeviceRow {
-    /// Short description of how this device's primary identity is expressed, for the header line.
-    fn ident_desc(&self) -> String {
-        config::identity_desc(self.registry_id, self.vendor_id, self.product_id)
+impl IdentityRow {
+    fn from_device_id(id: &DeviceId) -> Self {
+        IdentityRow {
+            label: id.label.clone().unwrap_or_default(),
+            registry_id: id.registry_id,
+            vendor_id: id.vendor_id,
+            product_id: id.product_id,
+        }
     }
 
-    /// This device's primary identity as a `DeviceId` (used when comparing / promoting).
-    fn primary_id(&self) -> DeviceId {
+    fn to_device_id(&self) -> DeviceId {
         DeviceId {
+            label: (!self.label.trim().is_empty()).then(|| self.label.trim().to_string()),
             registry_id: self.registry_id,
             vendor_id: self.vendor_id,
             product_id: self.product_id,
         }
     }
 
-    /// True when the device has no usable identity at all (primary or grouped).
-    fn device_key_is_empty(&self) -> bool {
-        self.primary_id().device_key().is_none()
-            && self.also.iter().all(|id| id.device_key().is_none())
+    fn device_key(&self) -> Option<u64> {
+        config::identity_key(self.registry_id, self.vendor_id, self.product_id)
+    }
+
+    fn desc(&self) -> String {
+        config::identity_desc(self.registry_id, self.vendor_id, self.product_id)
+    }
+}
+
+/// Editable form of one device and its mappings.
+struct DeviceRow {
+    name: String,
+    /// The device's identities — all equal (no primary/secondary), all sharing the mappings.
+    identities: Vec<IdentityRow>,
+    mappings: Vec<MappingRow>,
+    keys: Vec<KeyRow>,
+}
+
+impl DeviceRow {
+    /// Description of the device's identities, for list/header display when it has no name.
+    fn ident_desc(&self) -> String {
+        if self.identities.is_empty() {
+            "no identity".into()
+        } else {
+            self.identities
+                .iter()
+                .map(|i| i.desc())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    }
+
+    /// True when no identity has usable id data.
+    fn has_no_identity(&self) -> bool {
+        self.identities.iter().all(|i| i.device_key().is_none())
     }
 }
 
@@ -307,11 +338,12 @@ impl EditorApp {
             .device
             .iter()
             .map(|d| DeviceRow {
-                registry_id: d.registry_id,
-                vendor_id: d.vendor_id,
-                product_id: d.product_id,
-                also: d.also.clone(),
                 name: d.name.clone().unwrap_or_default(),
+                identities: d
+                    .identities()
+                    .iter()
+                    .map(IdentityRow::from_device_id)
+                    .collect(),
                 mappings: d.mapping.iter().map(MappingRow::from_mapping).collect(),
                 keys: d.key.iter().map(KeyRow::from_mapping).collect(),
             })
@@ -367,15 +399,12 @@ impl EditorApp {
                 .devices
                 .iter()
                 .map(|d| DeviceConfig {
-                    registry_id: d.registry_id,
-                    vendor_id: d.vendor_id,
-                    product_id: d.product_id,
-                    also: d.also.clone(),
                     name: if d.name.trim().is_empty() {
                         None
                     } else {
                         Some(d.name.clone())
                     },
+                    identity: d.identities.iter().map(IdentityRow::to_device_id).collect(),
                     mapping: d
                         .mappings
                         .iter()
@@ -385,19 +414,18 @@ impl EditorApp {
                         })
                         .collect(),
                     key: d.keys.iter().map(KeyRow::to_key_mapping).collect(),
+                    ..Default::default()
                 })
                 .collect(),
         }
     }
 
     fn is_connected(&self, dev: &DeviceRow) -> bool {
-        // Any of the device's identities (primary or grouped) being present counts as connected.
-        std::iter::once(dev.primary_id())
-            .chain(dev.also.iter().cloned())
-            .any(|id| self.identity_connected(&id))
+        // Any of the device's identities being present counts as connected.
+        dev.identities.iter().any(|id| self.identity_connected(id))
     }
 
-    fn identity_connected(&self, id: &DeviceId) -> bool {
+    fn identity_connected(&self, id: &IdentityRow) -> bool {
         self.connected.iter().any(|c| {
             // Prefer the stable USB identity; fall back to registry id.
             if let (Some(v), Some(p)) = (id.vendor_id, id.product_id) {
@@ -555,14 +583,11 @@ impl EditorApp {
         if self.connected.is_empty() {
             ui.weak("(no mice detected — connect one and click Rescan)");
         }
-        // Every identity key already in the model (primary + grouped), so we don't offer to add a
-        // device we already know under some identity.
+        // Every identity key already in the model, so we don't offer to add a device we already
+        // know under some identity.
         let mut existing_keys: Vec<u64> = Vec::new();
         for d in &self.devices {
-            if let Some(k) = config::identity_key(d.registry_id, d.vendor_id, d.product_id) {
-                existing_keys.push(k);
-            }
-            for id in &d.also {
+            for id in &d.identities {
                 if let Some(k) = id.device_key() {
                     existing_keys.push(k);
                 }
@@ -571,7 +596,7 @@ impl EditorApp {
         // Connected devices we don't already have (matched by their stable identity key).
         #[derive(Clone)]
         struct Addable {
-            id: DeviceId,
+            id: IdentityRow,
             name: String,
         }
         let addable: Vec<Addable> = self
@@ -580,16 +605,15 @@ impl EditorApp {
             .filter_map(|c| {
                 // Prefer the stable USB identity; only fall back to registry id when absent.
                 let id = if c.vendor_id.is_some() && c.product_id.is_some() {
-                    DeviceId {
-                        registry_id: None,
+                    IdentityRow {
                         vendor_id: c.vendor_id,
                         product_id: c.product_id,
+                        ..Default::default()
                     }
                 } else {
-                    DeviceId {
+                    IdentityRow {
                         registry_id: c.registry_entry_id,
-                        vendor_id: None,
-                        product_id: None,
+                        ..Default::default()
                     }
                 };
                 let key = id.device_key()?;
@@ -618,15 +642,12 @@ impl EditorApp {
             ui.horizontal(|ui| {
                 if ui.button(format!("+ {}", a.name)).clicked() {
                     self.devices.push(DeviceRow {
-                        registry_id: a.id.registry_id,
-                        vendor_id: a.id.vendor_id,
-                        product_id: a.id.product_id,
-                        also: Vec::new(),
                         name: if a.name.starts_with('(') {
                             String::new()
                         } else {
                             a.name.clone()
                         },
+                        identities: vec![a.id.clone()],
                         mappings: Vec::new(),
                         keys: Vec::new(),
                     });
@@ -642,7 +663,7 @@ impl EditorApp {
                         ))
                         .clicked()
                 {
-                    self.devices[sel].also.push(a.id.clone());
+                    self.devices[sel].identities.push(a.id.clone());
                 }
             });
         }
@@ -666,14 +687,12 @@ impl EditorApp {
                 self.capture_armed = true;
             } else if let Some(press) = LAST_PRESS.with(|p| p.borrow_mut().take()) {
                 let dev = &self.devices[sel];
-                // Does the press match any of the device's identities (primary or grouped)?
-                let press_matches = |id: &DeviceId| match (id.vendor_id, id.product_id) {
+                // Does the press match any of the device's identities?
+                let press_matches = |id: &IdentityRow| match (id.vendor_id, id.product_id) {
                     (Some(v), Some(p)) => press.vendor_id == Some(v) && press.product_id == Some(p),
                     _ => id.registry_id == Some(press.registry),
                 };
-                let same_device = dev.device_key_is_empty()
-                    || press_matches(&dev.primary_id())
-                    || dev.also.iter().any(press_matches);
+                let same_device = dev.has_no_identity() || dev.identities.iter().any(press_matches);
                 let button = press.button;
                 let name = match button {
                     0 => " (left click)",
@@ -704,15 +723,16 @@ impl EditorApp {
         }
 
         let connected = self.is_connected(&self.devices[sel]);
-        // Per-identity connection dots: index 0 = primary, then each `also` in order.
-        let ids_connected: Vec<bool> = std::iter::once(self.devices[sel].primary_id())
-            .chain(self.devices[sel].also.iter().cloned())
-            .map(|id| self.identity_connected(&id))
+        // Per-identity connection dots, in identity order.
+        let ids_connected: Vec<bool> = self.devices[sel]
+            .identities
+            .iter()
+            .map(|id| self.identity_connected(id))
             .collect();
         let capturing_row = self.capturing;
         let mut start_capture: Option<usize> = None;
         let mut remove_device = false;
-        let mut remove_also: Option<usize> = None;
+        let mut remove_identity: Option<usize> = None;
 
         {
             let dev = &mut self.devices[sel];
@@ -728,35 +748,38 @@ impl EditorApp {
             });
 
             // Identities: the same physical mouse can present several (dongle vs Bluetooth, or
-            // pointer + keyboard interfaces). All grouped identities share the mappings below.
+            // pointer + keyboard interfaces). They are all equal and share the mappings below.
             ui.add_space(4.0);
             ui.group(|ui| {
                 ui.horizontal(|ui| {
                     ui.strong("Identities");
-                    ui.weak("(all share this device's mappings)");
+                    if !dev.name.trim().is_empty() {
+                        ui.weak(format!("· {}", dev.name.trim()));
+                    }
+                    ui.weak("(all equal — they share the mappings below)");
                 });
-                let primary_dot = if *ids_connected.first().unwrap_or(&false) {
-                    "●"
-                } else {
-                    "○"
-                };
-                ui.label(format!("{primary_dot} {} — primary", dev.ident_desc()));
-                for (i, id) in dev.also.iter().enumerate() {
+                for (i, id) in dev.identities.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
-                        let dot = if *ids_connected.get(i + 1).unwrap_or(&false) {
+                        let dot = if *ids_connected.get(i).unwrap_or(&false) {
                             "●"
                         } else {
                             "○"
                         };
-                        ui.label(format!("{dot} {}", id.desc()));
+                        ui.label(dot);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut id.label)
+                                .desired_width(120.0)
+                                .hint_text("label (e.g. Bluetooth)"),
+                        );
+                        ui.label(format!("— {}", id.desc()));
                         if ui.small_button("Remove").clicked() {
-                            remove_also = Some(i);
+                            remove_identity = Some(i);
                         }
                     });
                 }
                 ui.weak(
-                    "To add another: connect the device the other way (dongle/Bluetooth), pick it \
-                     in the left list, and click \"⊕ merge\".",
+                    "Add another: connect the device the other way (dongle/Bluetooth), pick it in \
+                     the left list, and click \"⊕ merge\".",
                 );
             });
 
@@ -880,8 +903,8 @@ impl EditorApp {
         if let Some(row) = start_capture {
             self.begin_capture(row);
         }
-        if let Some(i) = remove_also {
-            self.devices[sel].also.remove(i);
+        if let Some(i) = remove_identity {
+            self.devices[sel].identities.remove(i);
         }
         if remove_device {
             self.devices.remove(sel);

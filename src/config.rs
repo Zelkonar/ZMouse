@@ -5,20 +5,21 @@
 //!
 //! ```toml
 //! [[device]]
-//! # Preferred: match by USB vendor/product id — stable across reconnects, reboots, and whether
-//! # the mouse is on its wireless dongle or Bluetooth. `registry_id` still works as a fallback.
+//! name = "ROG Chakram"         # human-friendly name for the whole device
+//!
+//! # A device's identities — all equal, all sharing the mappings below. The SAME physical mouse can
+//! # present several (its 2.4 GHz dongle vs Bluetooth, or a split pointer + keyboard interface).
+//! # Prefer USB vendor/product id (stable across reconnects); `registry_id` is a fallback.
+//! [[device.identity]]
+//! label = "2.4GHz dongle"      # optional friendly label
 //! vendor_id = 0x1532
 //! product_id = 0x00b7
-//! name = "ROG CHAKRAM CORE"   # comment only; matching is by vendor/product id
-//!
-//! # The SAME physical mouse can present different identities (e.g. on its wireless dongle vs
-//! # Bluetooth, or as separate pointer + keyboard interfaces). List the extras under `also` and
-//! # they all share this device's mappings below:
-//! [[device.also]]
+//! [[device.identity]]
+//! label = "Bluetooth"
 //! vendor_id = 0x1532
-//! product_id = 0x00aa          # e.g. the same mouse on its 2.4 GHz dongle
-//! [[device.also]]
-//! registry_id = 4295298668     # or a fallback registry id for an interface with no vendor/product
+//! product_id = 0x00aa
+//! [[device.identity]]
+//! registry_id = 4295298668     # fallback for an interface with no vendor/product id
 //!
 //! [[device.mapping]]
 //! button = 3                                              # CGEvent button (back)
@@ -104,12 +105,15 @@ pub fn vidpid_key(vendor_id: i64, product_id: i64) -> u64 {
     VIDPID_TAG | (((vendor_id as u64) & 0xFFFF) << 16) | ((product_id as u64) & 0xFFFF)
 }
 
-/// One hardware identity: a vendor/product pair (preferred) or a registry id (fallback).
-/// The same physical mouse can present several — e.g. one over Bluetooth and a different one on
-/// its wireless dongle (which also splits into pointer + keyboard interfaces). Listing them under
-/// a single device's `also` makes them all share that device's mappings.
+/// One hardware identity of a physical device: a vendor/product pair (preferred) or a registry id
+/// (fallback), with an optional human-friendly label. The same mouse can present several — e.g. one
+/// over Bluetooth and a different one on its wireless dongle (which also splits into pointer +
+/// keyboard interfaces). A device lists all of its identities, and they all share its mappings.
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct DeviceId {
+    /// Optional human-friendly label, e.g. "Bluetooth", "2.4GHz dongle", "keyboard interface".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registry_id: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -148,34 +152,45 @@ impl DeviceId {
     pub fn device_key(&self) -> Option<u64> {
         identity_key(self.registry_id, self.vendor_id, self.product_id)
     }
+    /// The raw identity data, e.g. "vendor 0x1532 product 0x00b4".
     pub fn desc(&self) -> String {
         identity_desc(self.registry_id, self.vendor_id, self.product_id)
     }
+    /// The label and data if labeled, else just the data.
+    /// E.g. "Bluetooth — vendor 0x068e product 0x00b5".
+    pub fn display(&self) -> String {
+        match self.label.as_deref().map(str::trim) {
+            Some(l) if !l.is_empty() => format!("{l} — {}", self.desc()),
+            _ => self.desc(),
+        }
+    }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct DeviceConfig {
-    /// Kernel registry entry id — a fallback identity. Ephemeral: it changes when the device
-    /// reconnects or switches transport (dongle vs Bluetooth), so prefer vendor/product id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub registry_id: Option<u64>,
-    /// USB vendor id (e.g. 0x1532 = Razer). With `product_id`, this is the stable match key.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vendor_id: Option<i64>,
-    /// USB product id. Paired with `vendor_id` to identify the device across reconnects.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_id: Option<i64>,
-    /// Additional identities for the *same physical device* (e.g. its dongle vs Bluetooth ids, or a
-    /// mouse's separate pointer + keyboard interfaces). All share this device's mappings/keys.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub also: Vec<DeviceId>,
+    /// Human-friendly name for the whole physical device, e.g. "Naga V2 HS".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The device's identities — all equal, all sharing the mappings below. A physical mouse can
+    /// present several (Bluetooth vs 2.4GHz dongle, or split pointer + keyboard interfaces).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub identity: Vec<DeviceId>,
+    // --- Legacy fields (pre-flat schema). Still read for backward compatibility and folded into
+    //     `identity` by `identities()`; a save rewrites the file to the `identity` list, after
+    //     which these stay empty. ---
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_id: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also: Vec<DeviceId>,
     #[serde(default)]
     pub mapping: Vec<Mapping>,
     /// Keystroke-triggered mappings, for buttons that emit a keystroke rather than a mouse button
     /// (e.g. an MMO mouse's 12 thumb buttons, which appear on a separate HID keyboard interface).
-    /// Matched per-device by `registry_id`, so a mouse's key remaps never touch a real keyboard.
+    /// Matched per-device by identity, so a mouse's key remaps never touch a real keyboard.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub key: Vec<KeyMapping>,
 }
@@ -210,39 +225,46 @@ pub enum Action {
 }
 
 impl DeviceConfig {
-    /// This device's primary lookup key (from its top-level identity fields).
-    pub fn device_key(&self) -> Option<u64> {
-        identity_key(self.registry_id, self.vendor_id, self.product_id)
+    /// All of this device's identities as one flat list — they are equal (no primary/secondary).
+    /// Prefers the canonical `identity` list; if empty, folds the legacy top-level fields + `also`
+    /// (older config format) so pre-flat configs keep working.
+    pub fn identities(&self) -> Vec<DeviceId> {
+        if !self.identity.is_empty() {
+            return self.identity.clone();
+        }
+        let mut ids = Vec::new();
+        let legacy_primary = DeviceId {
+            label: None,
+            registry_id: self.registry_id,
+            vendor_id: self.vendor_id,
+            product_id: self.product_id,
+        };
+        if legacy_primary.device_key().is_some() {
+            ids.push(legacy_primary);
+        }
+        ids.extend(self.also.iter().cloned());
+        ids
     }
 
-    /// Every lookup key this device answers to: its primary identity plus each `also` identity.
+    /// Every lookup key this device answers to (one per identity that has usable id data).
     /// The same mappings are shared across all of them.
     pub fn device_keys(&self) -> Vec<u64> {
-        let mut keys = Vec::new();
-        if let Some(k) = self.device_key() {
-            keys.push(k);
-        }
-        for id in &self.also {
-            if let Some(k) = id.device_key() {
-                keys.push(k);
-            }
-        }
-        keys
+        self.identities()
+            .iter()
+            .filter_map(|id| id.device_key())
+            .collect()
     }
 
-    /// Human-readable identity for log/validation messages (primary + any grouped identities).
+    /// Human-readable identities for log/validation messages.
     pub fn ident_desc(&self) -> String {
-        let primary = identity_desc(self.registry_id, self.vendor_id, self.product_id);
-        if self.also.is_empty() {
-            primary
+        let ids = self.identities();
+        if ids.is_empty() {
+            "<no identity>".into()
         } else {
-            let extra = self
-                .also
-                .iter()
-                .map(|id| id.desc())
+            ids.iter()
+                .map(|id| id.display())
                 .collect::<Vec<_>>()
-                .join(", ");
-            format!("{primary} (+ {extra})")
+                .join(", ")
         }
     }
 }
@@ -291,14 +313,14 @@ impl Config {
             let id = dev.ident_desc();
             if dev.device_keys().is_empty() {
                 problems.push(format!(
-                    "device '{}' has no identity: set vendor_id+product_id or registry_id",
+                    "device '{}' has no identity: add one with vendor_id+product_id or registry_id",
                     dev.name.as_deref().unwrap_or("<unnamed>")
                 ));
             }
-            for extra in &dev.also {
+            for extra in dev.identities() {
                 if extra.device_key().is_none() {
                     problems.push(format!(
-                        "device {} has an `also` entry with no identity (needs vendor_id+product_id or registry_id)",
+                        "device {} has an identity with no id data (needs vendor_id+product_id or registry_id)",
                         id
                     ));
                 }
@@ -398,6 +420,7 @@ mod tests {
                 vendor_id: None,
                 product_id: None,
                 also: vec![],
+                identity: vec![],
                 name: Some("Test Mouse".into()),
                 mapping: vec![
                     Mapping {
@@ -462,6 +485,7 @@ mod tests {
                 vendor_id: Some(0x1532),
                 product_id: Some(0x00b7),
                 also: vec![],
+                identity: vec![],
                 name: Some("Wireless Mouse".into()),
                 mapping: vec![Mapping {
                     button: 3,
@@ -486,6 +510,7 @@ mod tests {
                 vendor_id: None,
                 product_id: None,
                 also: vec![],
+                identity: vec![],
                 name: None,
                 mapping: vec![],
                 key: vec![],
@@ -514,6 +539,7 @@ mod tests {
                         ..Default::default()
                     },
                 ],
+                identity: vec![],
                 name: Some("Naga V2 HS".into()),
                 mapping: vec![Mapping {
                     button: 3,
@@ -538,5 +564,49 @@ mod tests {
         let keys = cfg.resolve_keys();
         assert!(keys.contains_key(&(vidpid_key(0x068e, 0x00b5), 26)));
         assert!(keys.contains_key(&(4295298668, 26)));
+    }
+
+    #[test]
+    fn flat_identity_list_with_labels_round_trips() {
+        let cfg = Config {
+            scroll: ScrollConfig::default(),
+            device: vec![DeviceConfig {
+                name: Some("Naga V2 HS".into()),
+                identity: vec![
+                    DeviceId {
+                        label: Some("Bluetooth".into()),
+                        vendor_id: Some(0x068e),
+                        product_id: Some(0x00b5),
+                        ..Default::default()
+                    },
+                    DeviceId {
+                        label: Some("2.4GHz dongle".into()),
+                        vendor_id: Some(0x1532),
+                        product_id: Some(0x00b4),
+                        ..Default::default()
+                    },
+                ],
+                mapping: vec![Mapping {
+                    button: 3,
+                    action: Action::Button { button: 2 },
+                }],
+                ..Default::default()
+            }],
+        };
+        let dir = std::env::temp_dir().join("zmouse-test");
+        let path = dir.join("flat_identity.toml");
+        save(&path, &cfg).expect("save");
+        let loaded = load(Some(&path)).expect("load");
+
+        assert!(loaded.validate().is_empty());
+        let d = &loaded.device[0];
+        // Labels survive the round trip, and both identities are equal (no primary/secondary).
+        assert_eq!(d.identity.len(), 2);
+        assert_eq!(d.identity[0].label.as_deref(), Some("Bluetooth"));
+        assert!(d.identity[0].display().starts_with("Bluetooth — "));
+        // Both identities resolve to the same mapping.
+        let buttons = loaded.resolve();
+        assert!(buttons.contains_key(&(vidpid_key(0x068e, 0x00b5), 3)));
+        assert!(buttons.contains_key(&(vidpid_key(0x1532, 0x00b4), 3)));
     }
 }

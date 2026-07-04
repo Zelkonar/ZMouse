@@ -11,11 +11,22 @@ reversal_guard_ms = 80     # an opposite tick within this window is treated as a
 boost_weak_ticks = false   # floor a slow tick to a full detent so pixel-precise apps don't ignore it
 min_tick_pixels = 10       # pixels a single tick should move (~10 = one normal detent)
 
-# A device, matched by its stable USB vendor/product id (preferred — survives reconnects/reboots).
 [[device]]
-vendor_id = 0x1532
+name = "ROG Chakram"       # human-friendly name for the whole physical device
+
+# A device is matched by its identities. The SAME physical mouse can present several — its 2.4 GHz
+# dongle vs Bluetooth, or a split pointer + keyboard interface — and they are all equal: every
+# identity shares the mappings below. Each identity may carry a friendly label.
+[[device.identity]]
+label = "2.4GHz dongle"    # optional; just for your reference
+vendor_id = 0x1532         # preferred: USB vendor/product id is stable across reconnects
 product_id = 0x00b7
-name = "ROG Chakram"       # cosmetic label only; matching is by id
+[[device.identity]]
+label = "Bluetooth"
+vendor_id = 0x1532
+product_id = 0x00aa
+[[device.identity]]
+registry_id = 4295298668   # fallback: a registry id, for an interface with no vendor/product id
 
 [[device.mapping]]
 button = 3                 # "back" (see `zmouse probe` for button numbers)
@@ -28,14 +39,6 @@ action = { type = "button", button = 2 }   # -> middle click
 [[device.mapping]]
 button = 5
 action = { type = "disabled" }              # swallow the button entirely
-
-# The SAME physical mouse can present different identities (its 2.4 GHz dongle vs Bluetooth, or a
-# separate pointer + keyboard interface). List the extras under `also`; they share the mappings above.
-[[device.also]]
-vendor_id = 0x068e
-product_id = 0x00b5        # e.g. the same mouse over Bluetooth
-[[device.also]]
-registry_id = 4295298668  # fallback: a registry id, for an interface with no usable vendor/product id
 
 # An MMO mouse's thumb buttons often emit keystrokes rather than mouse buttons. Remap them by the
 # key they emit under [[device.key]] — only keys from THIS device are affected, never a real keyboard.
